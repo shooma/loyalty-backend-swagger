@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: 🚧 Draft 🚧 Loyalty Program API
+  title: Loyalty Program API
   description: | 
     API for loyalty program management.
     Used by CBE POS terminals to identify members, 
@@ -71,8 +71,8 @@ paths:
                 status: true
                 member_name: "John Smith"
                 points_balance: 47
-                discount: 1.00
-                vouchers:
+                discount_total: 1.00
+                discounts:
                   - line_number: "1"
                     discount: 1.00
                 messages:
@@ -145,10 +145,10 @@ paths:
                 member_name: "John Smith"
                 points_collected: 4
                 current_points: 51
-                voucher:
-                  print: true
-                  code: "1235/k67kmd/20251115"
-                  description: "Get €5 off your next order over €20!"
+                vouchers:
+                  - print: true
+                    code: "1235/k67kmd/20251115"
+                    description: "Get €5 off your next order over €20!"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -305,15 +305,15 @@ components:
           description: Current bonus points balance
           minimum: 0
           example: 47
-        discount:
+        discount_total:
           type: number
           format: float
           description: Applicable discount in main currency (Euros/Pounds etc)
           minimum: 0
           example: 1.00
-        vouchers:
+        discounts:
           type: array
-          description: List of available vouchers
+          description: List of applied discounts
           items:
             type: object
             properties:
