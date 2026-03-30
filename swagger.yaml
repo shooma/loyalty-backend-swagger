@@ -31,11 +31,12 @@ paths:
     post:
       summary: Get loyalty program member data
       description: |
-        Used by CBE POS when scanning QR code or entering phone number.
+        Used by CBE POS when scanning QR code, entering phone number, or scanning a voucher.
         Returns member information and applicable discounts.
         
         **Notes:**
-        - Either `qr_code`, `phone`, or both can be provided
+        - `voucher` can be sent when a customer voucher is scanned at the POS
+        - Any combination of `qr_code`, `phone`, and `voucher` can be provided
       operationId: getMember
       tags:
         - Loyalty
@@ -48,6 +49,7 @@ paths:
             example:
               qr_code: "380686852536"
               phone: "+353871234567"
+              voucher: "1235/k67kmd/20251115"
               shop_id: "0000323"
               timestamp: "2025-11-12 14:19:00"
               receipt: "007648"
@@ -101,7 +103,7 @@ paths:
         
         **Notes:**
         - If user is not identified, a welcome voucher can be returned for printing
-        - `voucher.print = true` means the voucher should be printed on the receipt
+        - `vouchers[].print = true` means the voucher should be printed on the receipt
       operationId: finalizeOrder
       tags:
         - Loyalty
@@ -114,6 +116,7 @@ paths:
             example:
               qr_code: "380686852536"
               phone: "+353871234567"
+              voucher: "1235/k67kmd/20251115"
               shop_id: "0000323"
               transaction_id: "doc-uuid-12345"
               timestamp: "2025-11-12 14:21:00"
@@ -149,10 +152,10 @@ paths:
                 member_name: "John Smith"
                 points_collected: 4
                 current_points: 51
-                voucher:
-                  print: true
-                  code: "1235/k67kmd/20251115"
-                  description: "Get €5 off your next order over €20!"
+                vouchers:
+                  - print: true
+                    code: "1235/k67kmd/20251115"
+                    description: "Get €5 off your next order over €20!"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -195,7 +198,8 @@ components:
           description: Product description
           example: "LUNCHBOX"
         quantity:
-          type: integer
+          type: number
+          format: float
           description: Quantity
           minimum: 1
           example: 2
@@ -254,6 +258,10 @@ components:
           description: Member phone number
           pattern: '^\+?[1-9]\d{1,14}$'
           example: "+353871234567"
+        voucher:
+          type: string
+          description: Scanned voucher code
+          example: "1235/k67kmd/20251115"
         shop_id:
           type: string
           description: Shop identifier
@@ -373,6 +381,10 @@ components:
           description: Member phone number
           pattern: '^\+?[1-9]\d{1,14}$'
           example: "+353871234567"
+        voucher:
+          type: string
+          description: Scanned voucher code
+          example: "1235/k67kmd/20251115"
         shop_id:
           type: string
           description: Shop identifier
@@ -445,22 +457,24 @@ components:
           description: Current bonus points balance after award
           minimum: 0
           example: 51
-        voucher:
-          type: object
-          description: Generated voucher (if applicable)
-          properties:
-            print:
-              type: boolean
-              description: Whether voucher printing is required
-              example: true
-            code:
-              type: string
-              description: Voucher code
-              example: "1235/k67kmd/20251115"
-            description:
-              type: string
-              description: Voucher description
-              example: "Get €5 off your next order over €20!"
+        vouchers:
+          type: array
+          description: Generated vouchers (if applicable)
+          items:
+            type: object
+            properties:
+              print:
+                type: boolean
+                description: Whether voucher printing is required
+                example: true
+              code:
+                type: string
+                description: Voucher code
+                example: "1235/k67kmd/20251115"
+              description:
+                type: string
+                description: Voucher description
+                example: "Get €5 off your next order over €20!"
 
     ErrorResponse:
       type: object
