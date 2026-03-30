@@ -29,8 +29,8 @@ paths:
         Returns member information and applicable discounts.
         
         **Notes:**
-        - `voucher` can be sent when a customer voucher is scanned at the POS
-        - Any combination of `qr_code`, `phone`, and `voucher` can be provided
+        - `vouchers` can be sent when customer vouchers are scanned at the POS
+        - Any combination of `qr_code`, `phone`, and `vouchers` can be provided
       operationId: getMember
       tags:
         - Loyalty
@@ -43,7 +43,9 @@ paths:
             example:
               qr_code: "380686852536"
               phone: "+353871234567"
-              voucher: "1235/k67kmd/20251115"
+              vouchers:
+                - "1235/k67kmd/20251115"
+                - "24567/b6asnn891/20250620"
               shop_id: "0000323"
               timestamp: "2025-11-12 14:19:00"
               receipt: "007648"
@@ -74,6 +76,14 @@ paths:
                 member_name: "John Smith"
                 points_balance: 47
                 discount_total: 1.00
+                scanned_vouchers:
+                  - code: "1235/k67kmd/20251115"
+                    applied: true
+                    description: "Voucher 5 OFF 25"
+                  - code: "24567/b6asnn891/20250620"
+                    applied: false
+                    description: "Birthday voucher"
+                    reason: "Expired"
                 discounts:
                   - line_number: "1"
                     discount: 1.00
@@ -113,7 +123,9 @@ paths:
             example:
               qr_code: "380686852536"
               phone: "+353871234567"
-              voucher: "1235/k67kmd/20251115"
+              vouchers:
+                - "1235/k67kmd/20251115"
+                - "24567/b6asnn891/20250620"
               shop_id: "0000323"
               transaction_id: "doc-uuid-12345"
               timestamp: "2025-11-12 14:21:00"
@@ -148,6 +160,14 @@ paths:
                 member_name: "John Smith"
                 points_collected: 4
                 current_points: 51
+                scanned_vouchers:
+                  - code: "1235/k67kmd/20251115"
+                    applied: true
+                    description: "Voucher 5 OFF 25"
+                  - code: "24567/b6asnn891/20250620"
+                    applied: false
+                    description: "Birthday voucher"
+                    reason: "Low purchase amount"
                 vouchers:
                   - print: true
                     code: "1235/k67kmd/20251115"
@@ -257,10 +277,13 @@ components:
           description: Member phone number
           pattern: '^\+?[1-9]\d{1,14}$'
           example: "+353871234567"
-        voucher:
-          type: string
-          description: Scanned voucher code
-          example: "1235/k67kmd/20251115"
+        vouchers:
+          type: array
+          description: Scanned voucher codes
+          items:
+            type: string
+          example:
+            - "1235/k67kmd/20251115"
         shop_id:
           type: string
           description: Shop identifier
@@ -318,6 +341,28 @@ components:
           description: Applicable discount in main currency (Euros/Pounds etc)
           minimum: 0
           example: 1.00
+        scanned_vouchers:
+          type: array
+          description: Scanned vouchers with their application status
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Voucher code
+                example: "1235/k67kmd/20251115"
+              applied:
+                type: boolean
+                description: Whether the scanned voucher was applied
+                example: true
+              description:
+                type: string
+                description: Voucher description
+                example: "Voucher 5 OFF 25"
+              reason:
+                type: string
+                description: Reason why the scanned voucher was not applied
+                example: "Expired"
         discounts:
           type: array
           description: List of applied discounts
@@ -379,10 +424,13 @@ components:
           description: Member phone number
           pattern: '^\+?[1-9]\d{1,14}$'
           example: "+353871234567"
-        voucher:
-          type: string
-          description: Scanned voucher code
-          example: "1235/k67kmd/20251115"
+        vouchers:
+          type: array
+          description: Scanned voucher codes
+          items:
+            type: string
+          example:
+            - "1235/k67kmd/20251115"
         shop_id:
           type: string
           description: Shop identifier
@@ -449,6 +497,28 @@ components:
           description: Current bonus points balance after award
           minimum: 0
           example: 51
+        scanned_vouchers:
+          type: array
+          description: Scanned vouchers with their application status
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Voucher code
+                example: "1235/k67kmd/20251115"
+              applied:
+                type: boolean
+                description: Whether the scanned voucher was applied
+                example: true
+              description:
+                type: string
+                description: Voucher description
+                example: "Voucher 5 OFF 25"
+              reason:
+                type: string
+                description: Reason why the scanned voucher was not applied
+                example: "Low purchase amount"
         vouchers:
           type: array
           description: Generated vouchers (if applicable)
