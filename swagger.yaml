@@ -19,7 +19,7 @@ info:
 servers:
   - url: https://erp.polonez.ie
     description: Production server
-  - url: https://test-odoo.polonez.dev
+  - url: https://odoo-stage.polonez.dev
     description: Staging server
 
 security:
