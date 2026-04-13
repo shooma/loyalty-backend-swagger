@@ -1,10 +1,13 @@
 openapi: 3.0.3
 info:
   title: Loyalty Program API
-  description: | 
+  description: |
     API for loyalty program management.
-    Used by CBE POS terminals to identify members, 
+    Used by CBE POS terminals to identify members,
     apply discounts and vouchers, and finalize transactions.
+    Basket values coming from POS are the source of truth for eligibility calculations.
+    `get-member` can be called multiple times for the same receipt while the basket
+    or selected vouchers change. `finalize-order` must be idempotent by `transaction_id`.
   version: 1.0.0
   contact:
     name: Mike Shumkov (Polonez.ie)
@@ -13,7 +16,7 @@ info:
 servers:
   - url: https://erp.polonez.ie
     description: Production server
-  - url: https://test-odoo.polonez.dev
+  - url: https://odoo-stage.polonez.dev
     description: Staging server
 
 security:
@@ -25,12 +28,16 @@ paths:
     post:
       summary: Get loyalty program member data
       description: |
-        Used by CBE POS when scanning QR code, entering phone number, or scanning a voucher.
-        Returns member information and applicable discounts.
+        Used by CBE POS when products are scanned, a loyalty QR code or phone number
+        is entered, or a paper/electronic voucher is scanned. Returns member
+        information, voucher validation results, and applicable discounts.
         
         **Notes:**
-        - `vouchers` can be sent when customer vouchers are scanned at the POS
-        - Any combination of `qr_code`, `phone`, and `vouchers` can be provided
+        - `qr_code`, `phone`, and `vouchers` are all optional; the endpoint can be called even when none of them is present yet
+        - The endpoint may be called multiple times for the same receipt as the basket or selected vouchers change
+        - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
+        - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
+        - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
       operationId: getMember
       tags:
         - Loyalty
@@ -73,28 +80,32 @@ paths:
                 $ref: '#/components/schemas/GetMemberResponse'
               example:
                 status: true
+                member_found: true
                 member_name: "John Smith"
                 points_balance: 47
                 discount_total: 1.00
                 scanned_vouchers:
                   - code: "1235/k67kmd/20251115"
+                    status: "Used"
                     applied: true
                     description: "Voucher 5 OFF 25"
                   - code: "24567/b6asnn891/20250620"
+                    status: "Expired"
                     applied: false
                     description: "Birthday voucher"
+                    reason_code: "VOUCHER_EXPIRED"
                     reason: "Expired"
                 discounts:
                   - line_number: "1"
+                    type: "voucher"
+                    label: "Voucher 5 OFF 25"
                     discount: 1.00
                 messages:
-                  - "Welcome back!"
+                  - "Welcome back, John Smith!"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -105,12 +116,16 @@ paths:
     post:
       summary: Finalize transaction
       description: |
-        Always sent after purchase completion, even if customer was not identified.
-        Used for accounting, analytics and generating new vouchers.
+        Sent after payment is completed and before printing the final receipt.
+        Used to confirm the final basket, consume eligible vouchers, award points,
+        and generate any new vouchers that must be shown or printed.
         
         **Notes:**
-        - If user is not identified, a welcome voucher can be returned for printing
+        - `transaction_id` must be globally unique and the endpoint must be idempotent on retries
+        - Repeating the same `transaction_id` must not consume vouchers twice or award points twice
+        - If user is not identified, an anonymous voucher can still be returned for printing
         - `vouchers[].print = true` means the voucher should be printed on the receipt
+        - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
       operationId: finalizeOrder
       tags:
         - Loyalty
@@ -133,6 +148,7 @@ paths:
               pos_id: "01"
               pos_user_id: "12"
               transaction_value: 13.00
+              change: 0
               tenders:
                 - tender_name: "CASH"
                   amount: 12.00
@@ -157,21 +173,32 @@ paths:
                 $ref: '#/components/schemas/FinalizeOrderResponse'
               example:
                 status: true
+                member_found: true
                 member_name: "John Smith"
                 points_collected: 4
                 current_points: 51
                 scanned_vouchers:
                   - code: "1235/k67kmd/20251115"
+                    status: "Used"
                     applied: true
                     description: "Voucher 5 OFF 25"
                   - code: "24567/b6asnn891/20250620"
+                    status: "Revoked"
                     applied: false
                     description: "Birthday voucher"
+                    reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
+                    missing_amount: 13.00
                 vouchers:
                   - print: true
                     code: "1235/k67kmd/20251115"
+                    qr_code_payload: "1235/k67kmd/20251115"
                     description: "Get €5 off your next order over €20!"
+                    type: "Standard"
+                    status: "Issued"
+                    valid_until: "2025-11-30 23:59:59"
+                messages:
+                  - "4 points collected"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -188,14 +215,43 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Bearer token for authorization
+      description: |
+        Authorization token for POS integration.
+        Token scope can be terminal-specific, store-specific, or global.
     PosIdHeader:
       type: apiKey
       in: header
       name: X-Pos-Id
-      description: POS terminal identifier
+      description: POS terminal identifier. Required when a store-scoped token is used.
 
   schemas:
+    PosTimestamp:
+      type: string
+      description: UTC timestamp in format YYYY-MM-DD HH:mm:ss
+      pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+      example: "2025-11-12 14:19:00"
+
+    VoucherLifecycleStatus:
+      type: string
+      description: Voucher lifecycle status in Loyalty Backend
+      enum:
+        - Issued
+        - Active
+        - Used
+        - Expired
+        - Revoked
+      example: "Active"
+
+    VoucherType:
+      type: string
+      description: Voucher type configured in Loyalty Backend
+      enum:
+        - Welcome
+        - Birthday
+        - Standard
+        - Individual
+      example: "Standard"
+
     BasketItem:
       type: object
       required:
@@ -259,8 +315,114 @@ components:
           minimum: 0
           example: 0
 
+    DiscountLine:
+      type: object
+      description: Discount that POS should apply or print on the receipt
+      properties:
+        line_number:
+          type: string
+          description: Receipt line number. Use `TOTAL` for basket-level discounts.
+          example: "1"
+        type:
+          type: string
+          description: Discount source
+          enum:
+            - voucher
+            - staff
+            - loyalty
+            - promo
+            - manual
+          example: "voucher"
+        label:
+          type: string
+          description: Human-readable label for POS display or receipt printing
+          example: "Voucher 5 OFF 25"
+        discount:
+          type: number
+          format: float
+          description: Discount amount
+          minimum: 0
+          example: 1.00
+
+    VoucherStatusResult:
+      type: object
+      description: Validation or final processing result for a scanned voucher
+      properties:
+        code:
+          type: string
+          description: Voucher code received from POS
+          example: "1235/k67kmd/20251115"
+        status:
+          $ref: '#/components/schemas/VoucherLifecycleStatus'
+        applied:
+          type: boolean
+          description: Whether the voucher affected the current calculation or final order
+          example: true
+        description:
+          type: string
+          description: Voucher description
+          example: "Voucher 5 OFF 25"
+        reason_code:
+          type: string
+          description: Machine-readable reason why the voucher was not applied
+          example: "LOW_PURCHASE_AMOUNT"
+        reason:
+          type: string
+          description: Human-readable reason why the voucher was not applied
+          example: "13 euro missing for get 5 euro spent 25 euro"
+        missing_amount:
+          type: number
+          format: float
+          description: Additional spend required for voucher eligibility, when applicable
+          minimum: 0
+          example: 13.00
+        excluded_categories:
+          type: array
+          description: Categories that prevented voucher eligibility, when applicable
+          items:
+            type: string
+          example:
+            - "tobacco"
+            - "alcohol"
+
+    IssuedVoucher:
+      type: object
+      description: Voucher generated after order finalization
+      properties:
+        print:
+          type: boolean
+          description: Whether the voucher should be printed on the receipt
+          example: true
+        code:
+          type: string
+          description: Voucher code or text payload that POS should encode as QR/barcode when printing
+          example: "1235/k67kmd/20251115"
+        qr_code_payload:
+          type: string
+          description: Optional explicit QR payload when it differs from `code`
+          example: "1235/k67kmd/20251115"
+        description:
+          type: string
+          description: Voucher description
+          example: "Get €5 off your next order over €20!"
+        type:
+          $ref: '#/components/schemas/VoucherType'
+        status:
+          type: string
+          description: Status of the newly generated voucher
+          enum:
+            - Issued
+            - Active
+          example: "Issued"
+        valid_until:
+          $ref: '#/components/schemas/PosTimestamp'
+
     GetMemberRequest:
       type: object
+      description: |
+        Request used to identify a member and recalculate discounts for the current
+        basket state. The same receipt can be evaluated multiple times as the basket
+        or selected vouchers change.
       required:
         - shop_id
         - timestamp
@@ -279,7 +441,7 @@ components:
           example: "+353871234567"
         vouchers:
           type: array
-          description: Scanned voucher codes
+          description: Scanned voucher codes from paper receipts or the loyalty app
           items:
             type: string
           example:
@@ -289,10 +451,7 @@ components:
           description: Shop identifier
           example: "0000323"
         timestamp:
-          type: string
-          format: date-time
-          description: Transaction timestamp (format YYYY-MM-DD HH:MM:SS)
-          example: "2025-11-12 14:19:00"
+          $ref: '#/components/schemas/PosTimestamp'
         receipt:
           type: string
           description: Receipt number
@@ -326,6 +485,12 @@ components:
           type: boolean
           description: Request execution status
           example: true
+        member_found:
+          type: boolean
+          description: |
+            Whether a registered loyalty member was identified. Can be `false`
+            while anonymous voucher validation still succeeds.
+          example: true
         member_name:
           type: string
           description: Loyalty program member name
@@ -345,43 +510,15 @@ components:
           type: array
           description: Scanned vouchers with their application status
           items:
-            type: object
-            properties:
-              code:
-                type: string
-                description: Voucher code
-                example: "1235/k67kmd/20251115"
-              applied:
-                type: boolean
-                description: Whether the scanned voucher was applied
-                example: true
-              description:
-                type: string
-                description: Voucher description
-                example: "Voucher 5 OFF 25"
-              reason:
-                type: string
-                description: Reason why the scanned voucher was not applied
-                example: "Expired"
+            $ref: '#/components/schemas/VoucherStatusResult'
         discounts:
           type: array
           description: List of applied discounts
           items:
-            type: object
-            properties:
-              line_number:
-                type: string
-                description: Line number
-                example: "1"
-              discount:
-                type: number
-                format: float
-                description: Discount amount
-                minimum: 0
-                example: 1.00
+            $ref: '#/components/schemas/DiscountLine'
         messages:
           type: array
-          description: Messages to display to customer
+          description: Messages to display to cashier or customer
           items:
             type: string
           example:
@@ -406,6 +543,9 @@ components:
 
     FinalizeOrderRequest:
       type: object
+      description: |
+        Final basket confirmation. Repeated calls with the same `transaction_id`
+        must be handled idempotently by the Loyalty Backend.
       required:
         - shop_id
         - timestamp
@@ -426,7 +566,7 @@ components:
           example: "+353871234567"
         vouchers:
           type: array
-          description: Scanned voucher codes
+          description: Voucher codes that remained selected at checkout
           items:
             type: string
           example:
@@ -436,10 +576,7 @@ components:
           description: Shop identifier
           example: "0000323"
         timestamp:
-          type: string
-          format: date-time
-          description: Transaction timestamp (format YYYY-MM-DD HH:MM:SS)
-          example: "2025-11-12 14:21:00"
+          $ref: '#/components/schemas/PosTimestamp'
         receipt:
           type: string
           description: Receipt number
@@ -462,6 +599,12 @@ components:
           description: Final transaction amount
           minimum: 0
           example: 13.00
+        change:
+          type: number
+          format: float
+          description: Change amount
+          minimum: 0
+          example: 0
         tenders:
           type: array
           description: List of payment methods
@@ -483,6 +626,10 @@ components:
           type: boolean
           description: Request execution status
           example: true
+        member_found:
+          type: boolean
+          description: Whether a registered loyalty member was identified
+          example: true
         member_name:
           type: string
           description: Loyalty program member name
@@ -499,44 +646,21 @@ components:
           example: 51
         scanned_vouchers:
           type: array
-          description: Scanned vouchers with their application status
+          description: Final processing result for scanned vouchers
           items:
-            type: object
-            properties:
-              code:
-                type: string
-                description: Voucher code
-                example: "1235/k67kmd/20251115"
-              applied:
-                type: boolean
-                description: Whether the scanned voucher was applied
-                example: true
-              description:
-                type: string
-                description: Voucher description
-                example: "Voucher 5 OFF 25"
-              reason:
-                type: string
-                description: Reason why the scanned voucher was not applied
-                example: "Low purchase amount"
+            $ref: '#/components/schemas/VoucherStatusResult'
         vouchers:
           type: array
-          description: Generated vouchers (if applicable)
+          description: Generated vouchers, including anonymous receipt vouchers when applicable
           items:
-            type: object
-            properties:
-              print:
-                type: boolean
-                description: Whether voucher printing is required
-                example: true
-              code:
-                type: string
-                description: Voucher code
-                example: "1235/k67kmd/20251115"
-              description:
-                type: string
-                description: Voucher description
-                example: "Get €5 off your next order over €20!"
+            $ref: '#/components/schemas/IssuedVoucher'
+        messages:
+          type: array
+          description: Lines that POS may show or print on the receipt
+          items:
+            type: string
+          example:
+            - "4 points collected"
 
     ErrorResponse:
       type: object

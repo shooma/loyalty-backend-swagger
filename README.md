@@ -34,7 +34,7 @@ The example API specification used by this repository can be seen hosted at [htt
 5. Edit [dist/swagger-initializer.js](dist/swagger-initializer.js) and change the `url` property to reference your local YAML file. 
     ```javascript
         window.ui = SwaggerUIBundle({
-            url: "swagger.yaml",
+            url: "loyalty.yaml",
         ...
     ```
     Then fix any references to files in the "dist" directory.
