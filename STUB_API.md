@@ -99,7 +99,7 @@ Examples:
 ## Discount Rules
 
 - Return only discounts with `discount > 0`.
-- Stub currently writes discount lines to the first basket line.
+- Voucher and staff discounts are distributed across basket lines proportionally to line value.
 - Staff discount (10%) is applied before voucher discounts.
 - Voucher eligibility and application are evaluated after staff discount.
 - While evaluating multiple vouchers, backend applies vouchers from higher threshold to lower

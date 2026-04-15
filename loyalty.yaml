@@ -126,7 +126,11 @@ paths:
                   - line_number: "1"
                     type: "voucher"
                     label: "Applied loyalty voucher"
-                    discount: 500
+                    discount: 250
+                  - line_number: "2"
+                    type: "voucher"
+                    label: "Applied loyalty voucher"
+                    discount: 250
                 messages:
                   - "Member identified, discounts recalculated"
         '400':
@@ -378,7 +382,10 @@ components:
 
     DiscountLine:
       type: object
-      description: Discount that POS should apply or print on the receipt. Only positive discounts must be returned.
+      description: |
+        Discount that POS should apply or print on the receipt.
+        Only positive discounts must be returned.
+        Voucher and staff discounts are distributed across basket lines proportionally to line value.
       properties:
         line_number:
           type: string
