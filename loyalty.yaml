@@ -110,18 +110,18 @@ paths:
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
-                    description: "Voucher x_off_y"
+                    description: "Voucher 2 off 15"
                   - code: "96026705000039000006"
                     status: "Active"
                     applied: true
-                    description: "Voucher x_off_y"
+                    description: "Voucher 5 off 25"
                   - code: "96026705000039000011"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 2000
-                    description: "Voucher x_off_y"
+                    description: "Voucher 11 off 50"
                 discounts:
                   - line_number: "1"
                     type: "voucher"
@@ -228,31 +228,30 @@ paths:
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
-                    description: "Voucher x_off_y"
+                    description: "Voucher 2 off 15"
                   - code: "96026705000039000006"
                     status: "Used"
                     applied: true
-                    description: "Voucher x_off_y"
+                    description: "Voucher 5 off 25"
                   - code: "96026705000039000011"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 2000
-                    description: "Voucher x_off_y"
+                    description: "Voucher 11 off 50"
                 vouchers:
                   - print: true
                     code: "96026705000030000099"
                     qr_code_payload: "96026705000030000099"
-                    description: "Personal x_off_y voucher for your next grocery shopping"
+                    description: "Voucher 5 off 25"
                     type: "x_off_y"
                     status: "Issued"
                     valid_until: "2027-04-16 00:00:00"
                 messages:
                   - "30 points collected"
                   - "Used vouchers: 1"
-                  - "Used voucher: 96026705000039000006 (Voucher x_off_y)"
-                  - "Accrued points: 30"
+                  - "Used voucher: 96026705000039000006 (Voucher 5 off 25)"
                   - "Accrued vouchers: 1"
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -724,15 +723,13 @@ components:
             Expected lines include:
             - `Staff total discount: EUR X.XX` (when applicable)
             - `Used vouchers: N` and `Used voucher: <code> (<name>)` (only when at least one voucher was applied)
-            - `Accrued points: N` (only when `N > 0`)
             - `Accrued vouchers: N` (only when `N > 0`)
           items:
             type: string
           example:
             - "30 points collected"
             - "Used vouchers: 1"
-            - "Used voucher: 96026705000039000006 (Voucher x_off_y)"
-            - "Accrued points: 30"
+            - "Used voucher: 96026705000039000006 (Voucher 5 off 25)"
             - "Accrued vouchers: 1"
 
     ErrorResponse:

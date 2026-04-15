@@ -83,7 +83,6 @@ Examples:
 
 - `Staff total discount: EUR X.XX` (when staff discount is applied)
 - `Used vouchers: N` + `Used voucher: <id> (<name>)` for each applied voucher (only when at least one voucher was applied)
-- `Accrued points: N` (only when `N > 0`)
 - `Accrued vouchers: N` (only when `N > 0`)
 
 ## Implemented Validation
