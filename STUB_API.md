@@ -130,6 +130,29 @@ Voucher types:
 - `+353871234567` / card `3806868525360007` (David Brennan)
 - `+353871234565` / card `3806868525360005` (Michael Doyle, staff)
 
+## Integration Test Users (recommended)
+
+For POS integration testing, prefer using these dedicated users. They are seeded
+specifically for repeatable integration scenarios and already have active personal vouchers.
+
+Each user has:
+- 5 vouchers `2 off 15` (discount `200`, applicability threshold `1500`)
+- 5 vouchers `5 off 25` (discount `500`, applicability threshold `2500`)
+- 5 vouchers `11 off 50` (discount `1100`, applicability threshold `5000`)
+
+Credentials:
+
+1. `Integration Tester 01`:
+   phone `+353879991001`, card `3806868525361001`
+2. `Integration Tester 02`:
+   phone `+353879991002`, card `3806868525361002`
+3. `Integration Tester 03`:
+   phone `+353879991003`, card `3806868525361003`
+4. `Integration Tester 04`:
+   phone `+353879991004`, card `3806868525361004`
+5. `Integration Tester 05`:
+   phone `+353879991005`, card `3806868525361005`
+
 ## Seeded Voucher Examples
 
 User-bound:

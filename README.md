@@ -10,6 +10,21 @@ Public Swagger UI:
 - API contract: [`loyalty.yaml`](./loyalty.yaml)
 - Stub/backend behavior notes for POS integrators: [`STUB_API.md`](./STUB_API.md)
 
+## Integration test credentials (wiki quick reference)
+
+Use these dedicated users first for manual and automated integration runs:
+
+1. `Integration Tester 01`: phone `+353879991001`, card `3806868525361001`
+2. `Integration Tester 02`: phone `+353879991002`, card `3806868525361002`
+3. `Integration Tester 03`: phone `+353879991003`, card `3806868525361003`
+4. `Integration Tester 04`: phone `+353879991004`, card `3806868525361004`
+5. `Integration Tester 05`: phone `+353879991005`, card `3806868525361005`
+
+Each test user is pre-seeded with 15 active personal vouchers:
+- 5x `2 off 15`
+- 5x `5 off 25`
+- 5x `11 off 50`
+
 ## Available environments
 
 The Swagger `Servers` dropdown includes:
