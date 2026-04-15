@@ -24,7 +24,6 @@ servers:
 
 security:
   - BearerAuth: []
-    PosIdHeader: []
 
 paths:
   /api/v1/loyalty/get-member:
@@ -41,9 +40,14 @@ paths:
         - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
+        - Authorization is token-based with scope:
+          - POS-scoped token: `X-Pos-Id` header is optional
+          - Store-scoped token: `X-Pos-Id` header is required
       operationId: getMember
       tags:
         - Loyalty
+      parameters:
+        - $ref: '#/components/parameters/XPosIdHeader'
       requestBody:
         required: true
         content:
@@ -57,7 +61,7 @@ paths:
                 - "96026705000030000007"
                 - "96026705000030000011"
                 - "96026705000030000008"
-              shop_id: "0000323"
+              shop_id: "ATHLO"
               timestamp: "2026-04-15 13:10:00"
               receipt: "009101"
               pos_id: "01"
@@ -125,6 +129,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -142,12 +148,17 @@ paths:
         **Notes:**
         - `transaction_id` must be globally unique and the endpoint must be idempotent on retries
         - Repeating the same `transaction_id` must not consume vouchers twice or award points twice
-        - If user is not identified, an anonymous voucher can still be returned for printing
+        - If user is not identified and `transaction_value` reaches configured threshold, an anonymous welcome voucher can be returned for printing
         - `vouchers[].print = true` means the voucher should be printed on the receipt
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
+        - Authorization is token-based with scope:
+          - POS-scoped token: `X-Pos-Id` header is optional
+          - Store-scoped token: `X-Pos-Id` header is required
       operationId: finalizeOrder
       tags:
         - Loyalty
+      parameters:
+        - $ref: '#/components/parameters/XPosIdHeader'
       requestBody:
         required: true
         content:
@@ -161,7 +172,7 @@ paths:
                 - "96026705000030000007"
                 - "96026705000030000011"
                 - "96026705000030000008"
-              shop_id: "0000323"
+              shop_id: "ATHLO"
               transaction_id: "tx-demo-idempotent-1"
               timestamp: "2026-04-15 13:16:00"
               receipt: "009104"
@@ -230,6 +241,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -241,15 +254,24 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: opaque token
       description: |
         Authorization token for POS integration.
-        Token scope can be terminal-specific, store-specific, or global.
+        Token scope can be terminal-specific or store-specific.
     PosIdHeader:
       type: apiKey
       in: header
       name: X-Pos-Id
       description: POS terminal identifier. Required when a store-scoped token is used.
+
+  parameters:
+    XPosIdHeader:
+      name: X-Pos-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: POS terminal identifier. Required for store-scoped token, optional for POS-scoped token.
 
   schemas:
     PosTimestamp:
@@ -474,7 +496,7 @@ components:
         shop_id:
           type: string
           description: Shop identifier
-          example: "0000323"
+          example: "ATHLO"
         timestamp:
           $ref: '#/components/schemas/PosTimestamp'
         receipt:
@@ -597,7 +619,7 @@ components:
         shop_id:
           type: string
           description: Shop identifier
-          example: "0000323"
+          example: "ATHLO"
         timestamp:
           $ref: '#/components/schemas/PosTimestamp'
         receipt:
@@ -733,6 +755,19 @@ components:
             error:
               code: "UNAUTHORIZED"
               message: "Invalid or missing authentication token"
+
+    Forbidden:
+      description: Token scope validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: "FORBIDDEN"
+              message: "Token scope validation failed"
+              details: "Store token is not allowed for the provided X-Pos-Id"
 
     NotFound:
       description: Resource not found
