@@ -8,18 +8,19 @@ info:
     Basket values coming from POS are the source of truth for eligibility calculations.
     `get-member` can be called multiple times for the same receipt while the basket
     or selected vouchers change. `finalize-order` must be idempotent by `transaction_id`.
+    All monetary amounts in request/response payloads are sent in minor units (cents).
   version: 1.0.0
   contact:
     name: Mike Shumkov (Polonez.ie)
     email: mike.shumkov@polonez.ie
 
 servers:
+  - url: http://localhost:8069
+    description: Local server
   - url: https://erp.polonez.ie
     description: Production server
   - url: https://odoo-stage.polonez.dev
     description: Staging server
-  - url: http://localhost:8069
-    description: Local server
 
 security:
   - BearerAuth: []
@@ -50,28 +51,40 @@ paths:
             schema:
               $ref: '#/components/schemas/GetMemberRequest'
             example:
-              qr_code: "380686852536"
+              qr_code: "3806868525360007"
               phone: "+353871234567"
               vouchers:
-                - "1235/k67kmd/20251115"
-                - "24567/b6asnn891/20250620"
+                - "96026705000030000007"
+                - "96026705000030000011"
+                - "96026705000030000008"
               shop_id: "0000323"
-              timestamp: "2025-11-12 14:19:00"
-              receipt: "007648"
+              timestamp: "2026-04-15 13:10:00"
+              receipt: "009101"
               pos_id: "01"
               pos_user_id: "12"
-              transaction_value: 14.00
+              transaction_value: 3000
               basket_items:
                 - line_number: "1"
                   prod_code: "0000000002823"
                   product_desc: "LUNCHBOX"
-                  quantity: 2
-                  value: 7
+                  quantity: 1
+                  value: 1500
                   prod_dept: "39"
                   prod_group1: "00129"
                   prod_group2: "00619"
-                  vat: 1.21
-                  promo_amount: 0.2
+                  vat: 261
+                  promo_amount: 0
+                  reduced_amount: 0
+                - line_number: "2"
+                  prod_code: "0000000001111"
+                  product_desc: "COFFEE"
+                  quantity: 1
+                  value: 1500
+                  prod_dept: "39"
+                  prod_group1: "00129"
+                  prod_group2: "00619"
+                  vat: 261
+                  promo_amount: 0
                   reduced_amount: 0
       responses:
         '200':
@@ -83,27 +96,31 @@ paths:
               example:
                 status: true
                 member_found: true
-                member_name: "John Smith"
-                points_balance: 47
-                discount_total: 1.00
+                member_name: "David Brennan"
+                points_balance: 0
+                discount_total: 650
                 scanned_vouchers:
-                  - code: "1235/k67kmd/20251115"
-                    status: "Used"
+                  - code: "96026705000030000007"
+                    status: "Active"
                     applied: true
-                    description: "Voucher 5 OFF 25"
-                  - code: "24567/b6asnn891/20250620"
-                    status: "Expired"
+                    description: "Voucher 5 of 25"
+                  - code: "96026705000030000011"
+                    status: "Active"
+                    applied: true
+                    description: "Welcome Voucher"
+                  - code: "96026705000030000008"
+                    status: "Issued"
                     applied: false
-                    description: "Birthday voucher"
-                    reason_code: "VOUCHER_EXPIRED"
-                    reason: "Expired"
+                    description: "Welcome Voucher"
+                    reason_code: "MEMBER_MISMATCH"
+                    reason: "Voucher belongs to another member"
                 discounts:
                   - line_number: "1"
                     type: "voucher"
-                    label: "Voucher 5 OFF 25"
-                    discount: 1.00
+                    label: "Applied loyalty voucher"
+                    discount: 650
                 messages:
-                  - "Welcome back, John Smith!"
+                  - "Member identified, discounts recalculated"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -138,33 +155,45 @@ paths:
             schema:
               $ref: '#/components/schemas/FinalizeOrderRequest'
             example:
-              qr_code: "380686852536"
+              qr_code: "3806868525360007"
               phone: "+353871234567"
               vouchers:
-                - "1235/k67kmd/20251115"
-                - "24567/b6asnn891/20250620"
+                - "96026705000030000007"
+                - "96026705000030000011"
+                - "96026705000030000008"
               shop_id: "0000323"
-              transaction_id: "doc-uuid-12345"
-              timestamp: "2025-11-12 14:21:00"
-              receipt: "007649"
+              transaction_id: "tx-demo-idempotent-1"
+              timestamp: "2026-04-15 13:16:00"
+              receipt: "009104"
               pos_id: "01"
               pos_user_id: "12"
-              transaction_value: 13.00
+              transaction_value: 3000
               change: 0
               tenders:
                 - tender_name: "CASH"
-                  amount: 12.00
+                  amount: 3000
               basket_items:
                 - line_number: "1"
                   prod_code: "0000000002823"
                   product_desc: "LUNCHBOX"
-                  quantity: 2
-                  value: 6
+                  quantity: 1
+                  value: 1500
                   prod_dept: "39"
                   prod_group1: "00129"
                   prod_group2: "00619"
-                  vat: 1.21
-                  promo_amount: 0.2
+                  vat: 261
+                  promo_amount: 0
+                  reduced_amount: 0
+                - line_number: "2"
+                  prod_code: "0000000001111"
+                  product_desc: "COFFEE"
+                  quantity: 1
+                  value: 1500
+                  prod_dept: "39"
+                  prod_group1: "00129"
+                  prod_group2: "00619"
+                  vat: 261
+                  promo_amount: 0
                   reduced_amount: 0
       responses:
         '200':
@@ -176,31 +205,27 @@ paths:
               example:
                 status: true
                 member_found: true
-                member_name: "John Smith"
-                points_collected: 4
-                current_points: 51
+                member_name: "David Brennan"
+                points_collected: 30
+                current_points: 30
                 scanned_vouchers:
-                  - code: "1235/k67kmd/20251115"
+                  - code: "96026705000030000007"
                     status: "Used"
                     applied: true
-                    description: "Voucher 5 OFF 25"
-                  - code: "24567/b6asnn891/20250620"
-                    status: "Revoked"
-                    applied: false
-                    description: "Birthday voucher"
-                    reason_code: "LOW_PURCHASE_AMOUNT"
-                    reason: "Low purchase amount"
-                    missing_amount: 13.00
-                vouchers:
-                  - print: true
-                    code: "1235/k67kmd/20251115"
-                    qr_code_payload: "1235/k67kmd/20251115"
-                    description: "Get €5 off your next order over €20!"
-                    type: "Standard"
+                    description: "Voucher 5 of 25"
+                  - code: "96026705000030000011"
+                    status: "Used"
+                    applied: true
+                    description: "Welcome Voucher"
+                  - code: "96026705000030000008"
                     status: "Issued"
-                    valid_until: "2025-11-30 23:59:59"
+                    applied: false
+                    description: "Welcome Voucher"
+                    reason_code: "MEMBER_MISMATCH"
+                    reason: "Voucher belongs to another member"
+                vouchers: []
                 messages:
-                  - "4 points collected"
+                  - "30 points collected"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -281,11 +306,10 @@ components:
           minimum: 0.001
           example: 2
         value:
-          type: number
-          format: float
-          description: Line item value
+          type: integer
+          description: Line item value in cents
           minimum: 0
-          example: 7.00
+          example: 700
         prod_dept:
           type: string
           description: Product department
@@ -299,27 +323,24 @@ components:
           description: Product group level 2
           example: "00619"
         vat:
-          type: number
-          format: float
-          description: VAT amount
+          type: integer
+          description: VAT amount in cents
           minimum: 0
-          example: 1.21
+          example: 121
         promo_amount:
-          type: number
-          format: float
-          description: Promotional discount amount
+          type: integer
+          description: Promotional discount amount in cents
           minimum: 0
-          example: 0.2
+          example: 20
         reduced_amount:
-          type: number
-          format: float
-          description: Additional discount amount
+          type: integer
+          description: Additional discount amount in cents
           minimum: 0
           example: 0
 
     DiscountLine:
       type: object
-      description: Discount that POS should apply or print on the receipt
+      description: Discount that POS should apply or print on the receipt. Only positive discounts must be returned.
       properties:
         line_number:
           type: string
@@ -338,13 +359,12 @@ components:
         label:
           type: string
           description: Human-readable label for POS display or receipt printing
-          example: "Voucher 5 OFF 25"
+          example: "Applied loyalty voucher"
         discount:
-          type: number
-          format: float
-          description: Discount amount
-          minimum: 0
-          example: 1.00
+          type: integer
+          description: Discount amount in cents (must be greater than 0)
+          minimum: 1
+          example: 100
 
     VoucherStatusResult:
       type: object
@@ -352,8 +372,9 @@ components:
       properties:
         code:
           type: string
-          description: Voucher code received from POS
-          example: "1235/k67kmd/20251115"
+          description: Opaque voucher code received from POS (20 digits)
+          pattern: '^\d{20}$'
+          example: "96026705000030000007"
         status:
           $ref: '#/components/schemas/VoucherLifecycleStatus'
         applied:
@@ -363,7 +384,7 @@ components:
         description:
           type: string
           description: Voucher description
-          example: "Voucher 5 OFF 25"
+          example: "Voucher 5 of 25"
         reason_code:
           type: string
           description: Machine-readable reason why the voucher was not applied
@@ -373,11 +394,10 @@ components:
           description: Human-readable reason why the voucher was not applied
           example: "13 euro missing for get 5 euro spent 25 euro"
         missing_amount:
-          type: number
-          format: float
-          description: Additional spend required for voucher eligibility, when applicable
+          type: integer
+          description: Additional spend required for voucher eligibility, in cents
           minimum: 0
-          example: 13.00
+          example: 1300
         excluded_categories:
           type: array
           description: Categories that prevented voucher eligibility, when applicable
@@ -398,11 +418,13 @@ components:
         code:
           type: string
           description: Voucher code or text payload that POS should encode as QR/barcode when printing
-          example: "1235/k67kmd/20251115"
+          pattern: '^\d{20}$'
+          example: "96026705000030000011"
         qr_code_payload:
           type: string
           description: Optional explicit QR payload when it differs from `code`
-          example: "1235/k67kmd/20251115"
+          pattern: '^\d{20}$'
+          example: "96026705000030000011"
         description:
           type: string
           description: Voucher description
@@ -435,7 +457,7 @@ components:
         qr_code:
           type: string
           description: Loyalty program member QR code
-          example: "380686852536"
+          example: "3806868525360007"
         phone:
           type: string
           description: Member phone number
@@ -446,8 +468,9 @@ components:
           description: Scanned voucher codes from paper receipts or the loyalty app
           items:
             type: string
+            pattern: '^\d{20}$'
           example:
-            - "1235/k67kmd/20251115"
+            - "96026705000030000007"
         shop_id:
           type: string
           description: Shop identifier
@@ -457,7 +480,7 @@ components:
         receipt:
           type: string
           description: Receipt number
-          example: "007648"
+          example: "009101"
         pos_id:
           type: string
           description: POS terminal identifier
@@ -467,11 +490,10 @@ components:
           description: Cashier operator identifier
           example: "12"
         transaction_value:
-          type: number
-          format: float
-          description: Total transaction amount
+          type: integer
+          description: Total transaction amount in cents
           minimum: 0
-          example: 14.00
+          example: 1400
         basket_items:
           type: array
           description: List of items in the basket
@@ -496,18 +518,17 @@ components:
         member_name:
           type: string
           description: Loyalty program member name
-          example: "John Smith"
+          example: "David Brennan"
         points_balance:
           type: integer
           description: Current bonus points balance
           minimum: 0
           example: 47
         discount_total:
-          type: number
-          format: float
-          description: Applicable discount in main currency (Euros/Pounds etc)
+          type: integer
+          description: Applicable discount in cents
           minimum: 0
-          example: 1.00
+          example: 100
         scanned_vouchers:
           type: array
           description: Scanned vouchers with their application status
@@ -515,7 +536,7 @@ components:
             $ref: '#/components/schemas/VoucherStatusResult'
         discounts:
           type: array
-          description: List of applied discounts
+          description: List of applied discounts. Return only lines with discount > 0.
           items:
             $ref: '#/components/schemas/DiscountLine'
         messages:
@@ -524,7 +545,7 @@ components:
           items:
             type: string
           example:
-            - "Welcome back, John Smith!"
+            - "Member identified, discounts recalculated"
 
     Tender:
       type: object
@@ -537,11 +558,10 @@ components:
           description: Payment type (CASH, CARD, etc.)
           example: "CASH"
         amount:
-          type: number
-          format: float
-          description: Payment amount
+          type: integer
+          description: Payment amount in cents
           minimum: 0
-          example: 12.00
+          example: 1200
 
     FinalizeOrderRequest:
       type: object
@@ -560,7 +580,7 @@ components:
         qr_code:
           type: string
           description: Loyalty program member QR code
-          example: "380686852536"
+          example: "3806868525360007"
         phone:
           type: string
           description: Member phone number
@@ -571,8 +591,9 @@ components:
           description: Voucher codes that remained selected at checkout
           items:
             type: string
+            pattern: '^\d{20}$'
           example:
-            - "1235/k67kmd/20251115"
+            - "96026705000030000007"
         shop_id:
           type: string
           description: Shop identifier
@@ -582,7 +603,7 @@ components:
         receipt:
           type: string
           description: Receipt number
-          example: "007649"
+          example: "009104"
         pos_id:
           type: string
           description: POS terminal identifier
@@ -594,19 +615,17 @@ components:
         transaction_id:
           type: string
           description: Unique transaction identifier
-          example: "doc-uuid-12345"
+          example: "tx-demo-idempotent-1"
         transaction_value:
-          type: number
-          format: float
-          description: Final transaction amount
+          type: integer
+          description: Final transaction amount in cents
           minimum: 0
-          example: 13.00
+          example: 2590
         change:
-          type: number
-          format: float
-          description: Change amount
+          type: integer
+          description: Change amount in cents
           minimum: 0
-          example: 0
+          example: 410
         tenders:
           type: array
           description: List of payment methods
@@ -635,17 +654,17 @@ components:
         member_name:
           type: string
           description: Loyalty program member name
-          example: "John Smith"
+          example: "David Brennan"
         points_collected:
           type: integer
           description: Number of bonus points awarded
           minimum: 0
-          example: 4
+          example: 30
         current_points:
           type: integer
           description: Current bonus points balance after award
           minimum: 0
-          example: 51
+          example: 30
         scanned_vouchers:
           type: array
           description: Final processing result for scanned vouchers
@@ -662,7 +681,7 @@ components:
           items:
             type: string
           example:
-            - "4 points collected"
+            - "30 points collected"
 
     ErrorResponse:
       type: object
