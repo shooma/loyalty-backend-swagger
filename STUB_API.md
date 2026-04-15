@@ -110,20 +110,32 @@ Examples:
 - For anonymous customer (no member identified and no member identifiers in payload), welcome voucher is issued only when:
   - `transaction_value >= welcome_min_purchase_amount`
 - Default `welcome_min_purchase_amount` is `2500` (25.00).
+- For identified members, personal vouchers are auto-issued from active `x_off_y` rules:
+  - rules are checked from bigger purchase threshold to smaller
+  - one transaction may issue multiple vouchers
+  - after each issued voucher, remaining amount is reduced by rule trigger threshold
+  - optional store filter applies when rule has selected stores
+
+Default seeded rules:
+- `2 off 15` (trigger `1500`, voucher applicability threshold `1500`, discount `200`)
+- `5 off 25` (trigger `2500`, voucher applicability threshold `2500`, discount `500`)
+- `11 off 50` (trigger `5000`, voucher applicability threshold `5000`, discount `1100`)
 
 ## Validity Rules
 
 Configured via `Loyalty -> Settings`:
 
-- `standard_voucher_validity_days` (default `365`)
-- `birthday_days_before` / `birthday_days_after` (default `7/7`)
 - `welcome_min_purchase_amount` (default `2500`)
 
 Voucher types:
 
-- `WELCOME`: fixed days (`valid_from_offset_days=1`, `validity_days=14`)
-- `BIRTHDAY`: birthday window (member-bound)
-- `FIVE_OF_25`: standard fixed-days voucher
+- `Welcome` (anonymous): starts tomorrow, lifetime `14` days
+- `Birthday` (personal): member must have birthday, active from `7` days before birthday until `7` days after
+- `x_off_y` (personal): starts tomorrow, lifetime `365` days
+- `Individual` (personal): starts on issue day, lifetime `30` days
+
+Legacy compatibility:
+- `Standard` is normalized to `x_off_y`
 
 ## Seeded Members (examples)
 
@@ -155,15 +167,9 @@ Credentials:
 
 ## Seeded Voucher Examples
 
-User-bound:
-- `96026705000030000007` (Standard, member-bound)
-- `96026705000030000008` (Welcome, member-bound)
-
-Anonymous:
-- `96026705000030000011` (Welcome)
-- `96026705000030000013` (Standard)
-
-Birthday vouchers are always member-bound.
+- Demo vouchers with prefix `9602670500003000` are seeded for mixed statuses (`Active`, `Issued`, `Used`, `Revoked`, `Expired`).
+- Integration test users additionally receive active personal `x_off_y` vouchers with prefix `9602670500003900`.
+- Birthday vouchers are always personal (member-bound).
 
 ## Notes
 
