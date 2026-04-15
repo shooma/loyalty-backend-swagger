@@ -150,6 +150,7 @@ paths:
         - Repeating the same `transaction_id` must not consume vouchers twice or award points twice
         - If user is not identified and `transaction_value` reaches configured threshold, an anonymous welcome voucher can be returned for printing
         - `vouchers[].print = true` means the voucher should be printed on the receipt
+        - `messages[]` contains receipt-ready loyalty lines (optional, emitted only when applicable): staff discount, used voucher count/details, and accrual summary
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Authorization is token-based with scope:
           - POS-scoped token: `X-Pos-Id` header is optional
@@ -234,6 +235,11 @@ paths:
                 vouchers: []
                 messages:
                   - "30 points collected"
+                  - "Used vouchers: 2"
+                  - "Used voucher: 96026705000030000007 (Voucher 5 of 25)"
+                  - "Used voucher: 96026705000030000011 (Welcome Voucher)"
+                  - "Accrued points: 30"
+                  - "Accrued vouchers: 0"
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -695,11 +701,22 @@ components:
             $ref: '#/components/schemas/IssuedVoucher'
         messages:
           type: array
-          description: Lines that POS may show or print on the receipt
+          description: |
+            Lines that POS may show or print on the receipt.
+            Expected lines include:
+            - `Staff total discount: EUR X.XX` (when applicable)
+            - `Used vouchers: N` and `Used voucher: <code> (<name>)` (only when at least one voucher was applied)
+            - `Accrued points: N` (only when `N > 0`)
+            - `Accrued vouchers: N` (only when `N > 0`)
           items:
             type: string
           example:
             - "30 points collected"
+            - "Used vouchers: 2"
+            - "Used voucher: 96026705000030000007 (Voucher 5 of 25)"
+            - "Used voucher: 96026705000030000011 (Welcome Voucher)"
+            - "Accrued points: 30"
+            - "Accrued vouchers: 0"
 
     ErrorResponse:
       type: object

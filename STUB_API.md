@@ -77,7 +77,14 @@ Examples:
 - `current_points` (integer)
 - `scanned_vouchers[]`
 - `vouchers[]` (newly issued vouchers for printing/app)
-- `messages[]`
+- `messages[]` (receipt-ready lines)
+
+`messages[]` for `finalize-order` is intended for receipt output and includes:
+
+- `Staff total discount: EUR X.XX` (when staff discount is applied)
+- `Used vouchers: N` + `Used voucher: <id> (<name>)` for each applied voucher (only when at least one voucher was applied)
+- `Accrued points: N` (only when `N > 0`)
+- `Accrued vouchers: N` (only when `N > 0`)
 
 ## Implemented Validation
 
@@ -95,6 +102,7 @@ Examples:
 - Return only discounts with `discount > 0`.
 - Stub currently writes discount lines to the first basket line.
 - Staff discount (10%) is applied before voucher discounts.
+- Voucher eligibility and application are evaluated after staff discount.
 
 ## Voucher Issuance Rules
 
