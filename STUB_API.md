@@ -4,8 +4,9 @@ This file documents the current stub behavior of `polonez_loyalty` for POS integ
 
 ## Base URL
 
-- Local Odoo: `http://127.0.0.1:8069`
-- Swagger UI: `http://127.0.0.1:8080/`
+- Primary (Stage): `https://odoo-stage.polonez.dev`
+- Production: `https://erp.polonez.ie`
+- Swagger UI: `https://shooma.github.io/loyalty-backend-swagger/`
 
 ## Endpoints
 

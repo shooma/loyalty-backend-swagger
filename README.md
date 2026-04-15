@@ -2,6 +2,9 @@
 
 OpenAPI specification and Swagger UI for the Loyalty Backend API.
 
+Public Swagger UI:
+- `https://shooma.github.io/loyalty-backend-swagger/`
+
 ## Integration docs
 
 - API contract: [`loyalty.yaml`](./loyalty.yaml)
@@ -11,8 +14,8 @@ OpenAPI specification and Swagger UI for the Loyalty Backend API.
 
 The Swagger `Servers` dropdown includes:
 
-- `https://erp.polonez.ie` - Production
 - `https://odoo-stage.polonez.dev` - Staging
+- `https://erp.polonez.ie` - Production
 - `http://localhost:8069` - Local Odoo
 
 ## Run Swagger locally

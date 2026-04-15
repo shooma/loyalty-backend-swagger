@@ -15,12 +15,12 @@ info:
     email: mike.shumkov@polonez.ie
 
 servers:
-  - url: http://localhost:8069
-    description: Local server
+  - url: https://odoo-stage.polonez.dev
+    description: Staging server (primary integration environment)
   - url: https://erp.polonez.ie
     description: Production server
-  - url: https://odoo-stage.polonez.dev
-    description: Staging server
+  - url: http://localhost:8069
+    description: Local server
 
 security:
   - BearerAuth: []
