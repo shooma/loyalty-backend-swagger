@@ -2,6 +2,11 @@
 
 OpenAPI specification and Swagger UI for the Loyalty Backend API.
 
+## Integration docs
+
+- API contract: [`loyalty.yaml`](./loyalty.yaml)
+- Stub/backend behavior notes for POS integrators: [`STUB_API.md`](./STUB_API.md)
+
 ## Available environments
 
 The Swagger `Servers` dropdown includes:
