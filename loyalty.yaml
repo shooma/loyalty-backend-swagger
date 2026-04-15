@@ -18,6 +18,8 @@ servers:
     description: Production server
   - url: https://odoo-stage.polonez.dev
     description: Staging server
+  - url: http://localhost:8069
+    description: Local server
 
 security:
   - BearerAuth: []
