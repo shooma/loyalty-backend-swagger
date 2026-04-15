@@ -39,3 +39,40 @@ If you do not want to use `make`, you can run the helper script directly:
 ```bash
 ./scripts/run-swagger-local.sh
 ```
+
+## Run Swagger locally in detached mode
+
+Start server in background:
+
+```bash
+make swagger-local-start
+```
+
+Check status:
+
+```bash
+make swagger-local-status
+```
+
+Stop server:
+
+```bash
+make swagger-local-stop
+```
+
+Follow logs:
+
+```bash
+make swagger-local-logs
+```
+
+The detached mode writes:
+
+- PID: `.swagger-local.pid`
+- Logs: `.swagger-local.log`
+
+You can also override host/port:
+
+```bash
+HOST=0.0.0.0 PORT=8081 make swagger-local-start
+```

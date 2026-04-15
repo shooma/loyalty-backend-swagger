@@ -1,2 +1,4 @@
 .env
 .junie/
+.swagger-local.pid
+.swagger-local.log
