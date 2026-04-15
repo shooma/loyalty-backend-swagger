@@ -180,9 +180,6 @@ paths:
               pos_user_id: "12"
               transaction_value: 3000
               change: 0
-              tenders:
-                - tender_name: "CASH"
-                  amount: 3000
               basket_items:
                 - line_number: "1"
                   prod_code: "0000000002823"
@@ -597,7 +594,6 @@ components:
         - pos_id
         - transaction_id
         - transaction_value
-        - tenders
       properties:
         qr_code:
           type: string

@@ -88,7 +88,7 @@ Examples:
 - `timestamp` format is `YYYY-MM-DD HH:MM:SS`.
 - `transaction_value` and `change` are non-negative numbers.
 - `vouchers` and `basket_items` are arrays when present.
-- For `finalize-order`, `tenders` is a non-empty array.
+- `tenders` can be provided optionally; if provided, it should be an array.
 
 ## Discount Rules
 
