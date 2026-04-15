@@ -59,8 +59,8 @@ paths:
               phone: "+353879991001"
               vouchers:
                 - "96026705000039000001"
-                - "96026705000039000002"
-                - "96026705000039000003"
+                - "96026705000039000006"
+                - "96026705000039000011"
               shop_id: "ATHLO"
               timestamp: "2026-04-15 13:10:00"
               receipt: "009101"
@@ -102,25 +102,31 @@ paths:
                 member_found: true
                 member_name: "Integration Tester 01"
                 points_balance: 0
-                discount_total: 600
+                discount_total: 500
                 scanned_vouchers:
                   - code: "96026705000039000001"
                     status: "Active"
-                    applied: true
+                    applied: false
+                    reason_code: "LOW_PURCHASE_AMOUNT"
+                    reason: "Low purchase amount"
+                    missing_amount: 1000
                     description: "Voucher x_off_y"
-                  - code: "96026705000039000002"
+                  - code: "96026705000039000006"
                     status: "Active"
                     applied: true
                     description: "Voucher x_off_y"
-                  - code: "96026705000039000003"
+                  - code: "96026705000039000011"
                     status: "Active"
-                    applied: true
+                    applied: false
+                    reason_code: "LOW_PURCHASE_AMOUNT"
+                    reason: "Low purchase amount"
+                    missing_amount: 2000
                     description: "Voucher x_off_y"
                 discounts:
                   - line_number: "1"
                     type: "voucher"
                     label: "Applied loyalty voucher"
-                    discount: 600
+                    discount: 500
                 messages:
                   - "Member identified, discounts recalculated"
         '400':
@@ -169,8 +175,8 @@ paths:
               phone: "+353879991001"
               vouchers:
                 - "96026705000039000001"
-                - "96026705000039000002"
-                - "96026705000039000003"
+                - "96026705000039000006"
+                - "96026705000039000011"
               shop_id: "ATHLO"
               transaction_id: "tx-integration-tester-01-1"
               timestamp: "2026-04-15 13:16:00"
@@ -217,16 +223,22 @@ paths:
                 current_points: 30
                 scanned_vouchers:
                   - code: "96026705000039000001"
+                    status: "Active"
+                    applied: false
+                    reason_code: "LOW_PURCHASE_AMOUNT"
+                    reason: "Low purchase amount"
+                    missing_amount: 1000
+                    description: "Voucher x_off_y"
+                  - code: "96026705000039000006"
                     status: "Used"
                     applied: true
                     description: "Voucher x_off_y"
-                  - code: "96026705000039000002"
-                    status: "Used"
-                    applied: true
-                    description: "Voucher x_off_y"
-                  - code: "96026705000039000003"
-                    status: "Used"
-                    applied: true
+                  - code: "96026705000039000011"
+                    status: "Active"
+                    applied: false
+                    reason_code: "LOW_PURCHASE_AMOUNT"
+                    reason: "Low purchase amount"
+                    missing_amount: 2000
                     description: "Voucher x_off_y"
                 vouchers:
                   - print: true
@@ -238,10 +250,8 @@ paths:
                     valid_until: "2027-04-16 00:00:00"
                 messages:
                   - "30 points collected"
-                  - "Used vouchers: 3"
-                  - "Used voucher: 96026705000039000001 (Voucher x_off_y)"
-                  - "Used voucher: 96026705000039000002 (Voucher x_off_y)"
-                  - "Used voucher: 96026705000039000003 (Voucher x_off_y)"
+                  - "Used vouchers: 1"
+                  - "Used voucher: 96026705000039000006 (Voucher x_off_y)"
                   - "Accrued points: 30"
                   - "Accrued vouchers: 1"
         '400':
@@ -500,6 +510,8 @@ components:
             pattern: '^\d{20}$'
           example:
             - "96026705000039000001"
+            - "96026705000039000006"
+            - "96026705000039000011"
         shop_id:
           type: string
           description: Shop identifier
@@ -622,6 +634,8 @@ components:
             pattern: '^\d{20}$'
           example:
             - "96026705000039000001"
+            - "96026705000039000006"
+            - "96026705000039000011"
         shop_id:
           type: string
           description: Shop identifier
@@ -716,10 +730,8 @@ components:
             type: string
           example:
             - "30 points collected"
-            - "Used vouchers: 3"
-            - "Used voucher: 96026705000039000001 (Voucher x_off_y)"
-            - "Used voucher: 96026705000039000002 (Voucher x_off_y)"
-            - "Used voucher: 96026705000039000003 (Voucher x_off_y)"
+            - "Used vouchers: 1"
+            - "Used voucher: 96026705000039000006 (Voucher x_off_y)"
             - "Accrued points: 30"
             - "Accrued vouchers: 1"
 

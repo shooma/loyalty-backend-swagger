@@ -103,6 +103,8 @@ Examples:
 - Stub currently writes discount lines to the first basket line.
 - Staff discount (10%) is applied before voucher discounts.
 - Voucher eligibility and application are evaluated after staff discount.
+- While evaluating multiple vouchers, backend applies vouchers from higher threshold to lower
+  and decreases the remaining eligibility base after each applied voucher.
 
 ## Voucher Issuance Rules
 
