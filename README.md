@@ -8,7 +8,7 @@ Public Swagger UI:
 ## Integration docs
 
 - API contract: [`loyalty.yaml`](./loyalty.yaml)
-- Stub/backend behavior notes for POS integrators: [`STUB_API.md`](./STUB_API.md)
+- Backend behavior notes for POS integrators (v1): [`v1.md`](./v1.md)
 
 ## Integration test credentials (wiki quick reference)
 
