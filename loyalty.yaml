@@ -158,8 +158,10 @@ paths:
         **Notes:**
         - `transaction_id` must be globally unique and the endpoint must be idempotent on retries
         - Repeating the same `transaction_id` must not consume vouchers twice or award points twice
-        - If user is not identified and `transaction_value` reaches configured threshold, an anonymous welcome voucher can be returned for printing
-        - `vouchers[].print = true` means the voucher should be printed on the receipt
+        - Automatic `x_off_y` rule vouchers can be issued for both identified and anonymous customers
+        - `vouchers[].printed = true` means the voucher should be printed on the receipt (anonymous issuance)
+        - For identified members, issued vouchers are returned with `printed = false` and are intended for the mobile app
+        - Points are awarded only for verified members (`email`, `phone`, `name`, `surname`, `birthday`, `nationality` are all filled)
         - `messages[]` contains receipt-ready loyalty lines (optional, emitted only when applicable): staff discount, used voucher count/details, and accrual summary
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Authorization is token-based with scope:
@@ -247,7 +249,7 @@ paths:
                     missing_amount: 2000
                     description: "Voucher 11 off 50"
                 vouchers:
-                  - print: true
+                  - printed: false
                     code: "96026705000030000099"
                     qr_code_payload: "96026705000030000099"
                     description: "Voucher 5 off 25"
@@ -458,7 +460,7 @@ components:
       type: object
       description: Voucher generated after order finalization
       properties:
-        print:
+        printed:
           type: boolean
           description: Whether the voucher should be printed on the receipt
           example: true
@@ -570,7 +572,7 @@ components:
           example: "Integration Tester 01"
         points_balance:
           type: integer
-          description: Current bonus points balance
+          description: Current bonus points balance (only verified members accrue points)
           minimum: 0
           example: 47
         discount_total:
@@ -707,7 +709,7 @@ components:
           example: "Integration Tester 01"
         points_collected:
           type: integer
-          description: Number of bonus points awarded
+          description: Number of bonus points awarded (0 for non-verified members)
           minimum: 0
           example: 30
         current_points:
