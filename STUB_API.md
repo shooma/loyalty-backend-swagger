@@ -4,7 +4,7 @@ This file documents the current stub behavior of `polonez_loyalty` for POS integ
 
 ## Base URL
 
-- Primary (Stage): `https://odoo-stage.polonez.dev/odoo`
+- Primary (Stage): `https://stage.odoo-stage.polonez.dev/odoo`
 - Production: `https://erp.polonez.ie`
 - Swagger UI: `https://shooma.github.io/loyalty-backend-swagger/`
 
@@ -15,6 +15,10 @@ This file documents the current stub behavior of `polonez_loyalty` for POS integ
 - Temporary stage compatibility routes:
   - `POST /odoo/api/v1/loyalty/get-member`
   - `POST /odoo/api/v1/loyalty/finalize-order`
+
+Stage note:
+- Stage uses host-based DB selection (`dbfilter = ^%d$`), so use `stage.odoo-stage.polonez.dev`
+  for DB `stage`.
 
 ## Monetary Units
 
