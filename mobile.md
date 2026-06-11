@@ -123,11 +123,13 @@ verify:   { "country": "ie", "phone": "871234561", "code": "000000", "device_id"
 > Want to exercise the **signup** flow deterministically? Ask the backend team to
 > point `otp_test_phone` at a fresh, non-existent number.
 
-### Option B — code from server logs
+### Option B — Mailtrap inbox (for any other phone)
 
-For any other phone, the default delivery provider is `null`, which **logs** the
-generated code in the Odoo server log instead of sending it. The backend team can
-read it off the staging logs on request. Slower — prefer Option A.
+For any phone other than the test phone, staging delivers the OTP into a
+**Mailtrap** catch-all inbox (the OTP is emailed to a synthetic
+`<phone-digits>@polonez.dev` address). This lets you exercise the **signup** flow
+with fresh, never-seen numbers and still read the code. Ask the backend team for
+access to the staging Mailtrap inbox.
 
 ---
 
