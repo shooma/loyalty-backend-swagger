@@ -18,15 +18,16 @@ on the staging server. The machine-readable contract is the Swagger:
 | | |
 |---|---|
 | **Staging base URL** | `https://stage.odoo-stage.polonez.dev` |
-| **Prefix to use now** | `/odoo/api/v1/mobile/...` |
+| **Recommended prefix** | `/api/v1/mobile/...` (canonical) |
+| **Fallback prefix** | `/odoo/api/v1/mobile/...` (temporary compatibility) |
 | **Content type** | `application/json` |
 | **DB selection** | host-based (`dbfilter`), nothing to send — just use the staging host |
 
-> ⚠️ **On staging, only the `/odoo/api/v1/mobile/...` prefix is currently routed.**
-> The canonical `/api/v1/mobile/...` prefix (used in the Swagger paths) is **not
-> active yet** — prepend `/odoo` to every path for now. In the Swagger UI, pick the
-> server entry that ends with `/odoo`. The endpoint tables below list the logical
-> path; the runnable cURL examples in §6 already include the `/odoo` prefix.
+> **Use the canonical `/api/v1/mobile/...` prefix** — it's the portable one across
+> environments. The `/odoo/api/v1/mobile/...` prefix is a **temporary fallback**;
+> both currently respond on staging. In the Swagger UI, pick the plain server entry
+> (the one *without* `/odoo`). All paths and examples in this document use the
+> canonical prefix.
 
 All monetary amounts are **integers in minor units (cents)**: `300` = €3.00.
 
@@ -66,9 +67,11 @@ Content-Type: application/json
 POST /api/v1/mobile/auth/otp/verify
 Content-Type: application/json
 
-{ "country": "ie", "phone": "871234561", "code": "000000", "device_id": "<your-device-uuid>" }
+{ "country": "ie", "phone": "871234561", "code": "000000", "device_id": "<your-device-uuid>", "platform": "android" }
 ```
 
+- `device_id` and `platform` are **required**. `platform` must be `android` or
+  `ios` (otherwise `400 INVALID_PLATFORM`).
 - **Known phone** → `{ "status": "authenticated", "token": "est_...", ... }`.
 - **New phone** → `{ "status": "signup_required", "signup_token": "..." }` →
   call `signup/complete`.
@@ -80,10 +83,11 @@ Content-Type: application/json
 POST /api/v1/mobile/auth/signup/complete
 Content-Type: application/json
 
-{ "signup_token": "...", "first_name": "Test", "terms_accepted": true, "device_id": "<your-device-uuid>" }
+{ "signup_token": "...", "first_name": "Test", "terms_accepted": true, "device_id": "<your-device-uuid>", "platform": "android" }
 ```
 
-Returns a session `token`.
+Returns a session `token`. Like verify, `device_id` and `platform`
+(`android`|`ios`) are **required**.
 
 ### 2.4 Using the session token
 
@@ -173,7 +177,7 @@ POS team so mobile and POS testing don't collide.
 ## 5. Endpoint cheat-sheet
 
 Authoritative request/response schemas are in `mobile.yaml` (Swagger UI). Quick map.
-**On staging, prepend `/odoo`** to every path below (e.g. `/odoo/api/v1/mobile/config`).
+Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 
 ### Public (no auth)
 | Method | Path | Purpose |
@@ -208,8 +212,8 @@ Authoritative request/response schemas are in `mobile.yaml` (Swagger UI). Quick 
 ## 6. Quick start (cURL)
 
 ```bash
-# Staging currently routes only the /odoo prefix, so bake it into BASE:
-BASE=https://stage.odoo-stage.polonez.dev/odoo
+# Canonical prefix (recommended). For the /odoo fallback, append /odoo to BASE.
+BASE=https://stage.odoo-stage.polonez.dev
 
 # 1. public config (no auth)
 curl -s $BASE/api/v1/mobile/config | jq
@@ -219,10 +223,10 @@ curl -s -X POST $BASE/api/v1/mobile/auth/otp/request \
   -H 'Content-Type: application/json' \
   -d '{"country":"ie","phone":"871234561"}' | jq
 
-# 3. verify → get session token
+# 3. verify → get session token (device_id + platform are required)
 TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
   -H 'Content-Type: application/json' \
-  -d '{"country":"ie","phone":"871234561","code":"000000","device_id":"dev-1"}' \
+  -d '{"country":"ie","phone":"871234561","code":"000000","device_id":"dev-1","platform":"android"}' \
   | jq -r .token)
 
 # 4. authenticated call
@@ -241,5 +245,6 @@ curl -s $BASE/api/v1/mobile/me/card -H "Authorization: Bearer $TOKEN" | jq
 | `429` | OTP rate limit — wait `retry_after` seconds |
 | `503` | OTP delivery provider unavailable |
 
-Errors carry a machine-readable code (e.g. `INVALID_COUNTRY`, `OTP_RATE_LIMIT_REQUEST`,
-`OTP_LOCKED`) — see the error schemas in `mobile.yaml`.
+Errors carry a machine-readable code (e.g. `INVALID_COUNTRY`, `INVALID_PLATFORM`,
+`INVALID_JSON`, `OTP_RATE_LIMIT_REQUEST`, `OTP_LOCKED`) — see the error schemas in
+`mobile.yaml`.
