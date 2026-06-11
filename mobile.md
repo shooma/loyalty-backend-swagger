@@ -18,10 +18,15 @@ on the staging server. The machine-readable contract is the Swagger:
 | | |
 |---|---|
 | **Staging base URL** | `https://stage.odoo-stage.polonez.dev` |
-| **Canonical prefix** | `/api/v1/mobile/...` |
-| **Odoo-compat prefix** | `/odoo/api/v1/mobile/...` (use if a proxy/gateway needs the `/odoo` root) |
+| **Prefix to use now** | `/odoo/api/v1/mobile/...` |
 | **Content type** | `application/json` |
 | **DB selection** | host-based (`dbfilter`), nothing to send — just use the staging host |
+
+> ⚠️ **On staging, only the `/odoo/api/v1/mobile/...` prefix is currently routed.**
+> The canonical `/api/v1/mobile/...` prefix (used in the Swagger paths) is **not
+> active yet** — prepend `/odoo` to every path for now. In the Swagger UI, pick the
+> server entry that ends with `/odoo`. The endpoint tables below list the logical
+> path; the runnable cURL examples in §6 already include the `/odoo` prefix.
 
 All monetary amounts are **integers in minor units (cents)**: `300` = €3.00.
 
@@ -167,7 +172,8 @@ POS team so mobile and POS testing don't collide.
 
 ## 5. Endpoint cheat-sheet
 
-Authoritative request/response schemas are in `mobile.yaml` (Swagger UI). Quick map:
+Authoritative request/response schemas are in `mobile.yaml` (Swagger UI). Quick map.
+**On staging, prepend `/odoo`** to every path below (e.g. `/odoo/api/v1/mobile/config`).
 
 ### Public (no auth)
 | Method | Path | Purpose |
@@ -202,7 +208,8 @@ Authoritative request/response schemas are in `mobile.yaml` (Swagger UI). Quick 
 ## 6. Quick start (cURL)
 
 ```bash
-BASE=https://stage.odoo-stage.polonez.dev
+# Staging currently routes only the /odoo prefix, so bake it into BASE:
+BASE=https://stage.odoo-stage.polonez.dev/odoo
 
 # 1. public config (no auth)
 curl -s $BASE/api/v1/mobile/config | jq
