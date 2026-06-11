@@ -1,13 +1,18 @@
 # Loyalty Backend Swagger
 
-OpenAPI specification and Swagger UI for the Loyalty Backend API.
+OpenAPI specifications and Swagger UI for the Loyalty Backend APIs.
 
 Public Swagger UI:
 - `https://shooma.github.io/loyalty-backend-swagger/`
 
+The Swagger UI contains separate specs in the top dropdown:
+- `Cash Register API` — POS/cash-register loyalty integration
+- `Mobile App API` — loyalty mobile app endpoints
+
 ## Integration docs
 
-- API contract: [`loyalty.yaml`](./loyalty.yaml)
+- Cash-register API contract: [`loyalty.yaml`](./loyalty.yaml)
+- Mobile app API contract: [`mobile.yaml`](./mobile.yaml)
 - Backend behavior notes for POS integrators (v1): [`v1.md`](./v1.md)
 
 ## Integration test credentials (wiki quick reference)

@@ -3,7 +3,11 @@ window.onload = function() {
 
   // the following lines will be replaced by docker/configurator, when it runs in a docker-container
   window.ui = SwaggerUIBundle({
-    url: "loyalty.yaml",
+    urls: [
+      { url: "loyalty.yaml", name: "Cash Register API" },
+      { url: "mobile.yaml", name: "Mobile App API" }
+    ],
+    "urls.primaryName": "Cash Register API",
     dom_id: '#swagger-ui',
     deepLinking: true,
     presets: [

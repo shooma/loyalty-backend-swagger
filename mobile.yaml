@@ -1,0 +1,1172 @@
+openapi: 3.0.3
+info:
+  title: Polonez & Eastore Loyalty Mobile API
+  description: |
+    Public REST API for the Polonez & Eastore loyalty mobile app.
+
+    The API is separate from the cash-register/POS loyalty API. It covers app
+    configuration, legal documents, phone OTP login/signup, profile lifecycle,
+    digital loyalty card QR tokens, points history, and session management.
+
+    All endpoints are registered on both URL prefixes:
+    - canonical public prefix: `/api/v1/mobile/...`
+    - Odoo-compatible prefix: `/odoo/api/v1/mobile/...`
+
+    In this OpenAPI document paths use the canonical `/api/v1/mobile` prefix.
+    Select a server ending with `/odoo` from the Servers dropdown when you need
+    to call the Odoo-compatible route.
+  version: 1.0.0
+  contact:
+    name: Mike Shumkov (Polonez.ie)
+    email: mike.shumkov@polonez.ie
+
+servers:
+  - url: https://stage.odoo-stage.polonez.dev
+    description: Staging server - canonical mobile prefix
+  - url: https://stage.odoo-stage.polonez.dev/odoo
+    description: Staging server - Odoo-compatible prefix
+  - url: https://erp.polonez.ie
+    description: Production server - canonical mobile prefix
+  - url: https://erp.polonez.ie/odoo
+    description: Production server - Odoo-compatible prefix
+  - url: http://localhost:8069
+    description: Local Odoo - canonical mobile prefix
+  - url: http://localhost:8069/odoo
+    description: Local Odoo - Odoo-compatible prefix
+
+tags:
+  - name: Mobile - Public
+    description: Public app configuration and legal content.
+  - name: Mobile - Auth
+    description: OTP login/signup and mobile session lifecycle.
+  - name: Mobile - Profile
+    description: Authenticated customer profile lifecycle.
+  - name: Mobile - Card
+    description: Authenticated digital card, QR tokens, and points history.
+
+paths:
+  /api/v1/mobile/config:
+    get:
+      tags:
+        - Mobile - Public
+      summary: Get public app configuration
+      description: |
+        Returns welcome-voucher display information, legal document versions,
+        and dropdown options needed by the app before login.
+      operationId: mobileGetConfig
+      responses:
+        '200':
+          description: Public app configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileConfigResponse'
+              example:
+                welcome_voucher:
+                  discount_cents: 300
+                  min_purchase_cents: 3000
+                  label: "€3 off €30"
+                legal:
+                  terms:
+                    version: "2026-06-draft"
+                  privacy:
+                    version: "2026-06-draft"
+                countries:
+                  - value: ireland
+                    label: Ireland
+                  - value: poland
+                    label: Poland
+                genders:
+                  - value: male
+                    label: Male
+                  - value: female
+                    label: Female
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/legal/terms:
+    get:
+      tags:
+        - Mobile - Public
+      summary: Get Terms & Conditions
+      operationId: mobileGetTerms
+      responses:
+        '200':
+          description: Published Terms & Conditions document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocument'
+              example:
+                doc_type: terms
+                title: Polonez & Eastore Club — Terms & Conditions
+                version: "2026-06-draft"
+                body_html: "<div><h2>Terms & Conditions</h2><p>...</p></div>"
+                updated_at: "2026-06-11T21:00:00Z"
+        '404':
+          $ref: '#/components/responses/LegalDocumentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/legal/privacy:
+    get:
+      tags:
+        - Mobile - Public
+      summary: Get Privacy Policy
+      operationId: mobileGetPrivacy
+      responses:
+        '200':
+          description: Published Privacy Policy document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocument'
+              example:
+                doc_type: privacy
+                title: Polonez & Eastore Club — Privacy Policy
+                version: "2026-06-draft"
+                body_html: "<div><h2>Privacy Policy</h2><p>...</p></div>"
+                updated_at: "2026-06-11T21:00:00Z"
+        '404':
+          $ref: '#/components/responses/LegalDocumentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/auth/otp/request:
+    post:
+      tags:
+        - Mobile - Auth
+      summary: Request phone OTP
+      description: |
+        Generates a 6-digit OTP for the phone number and dispatches it through
+        the configured delivery provider. Phone is normalized to E.164 using
+        `country` (`ie` => `+353`, `ni` => `+44`).
+      operationId: mobileRequestOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+            examples:
+              ireland:
+                summary: Irish mobile number
+                value:
+                  country: ie
+                  phone: "879991001"
+              northernIreland:
+                summary: Northern Ireland number
+                value:
+                  country: ni
+                  phone: "7700 900123"
+      responses:
+        '200':
+          description: OTP created and delivery attempted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpRequestResponse'
+              example:
+                expires_in: 300
+                retry_after: 60
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+
+  /api/v1/mobile/auth/otp/verify:
+    post:
+      tags:
+        - Mobile - Auth
+      summary: Verify phone OTP
+      description: |
+        Verifies the 6-digit OTP.
+
+        If the phone already belongs to a loyalty profile, the response is
+        `status=authenticated` with a mobile Bearer session token.
+
+        If the phone is unknown, the response is `status=signup_required` with
+        a short-lived `signup_token`. The app must then call
+        `/auth/signup/complete`.
+      operationId: mobileVerifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+            example:
+              country: ie
+              phone: "879991001"
+              code: "654321"
+              device_id: "ios-device-uuid"
+              platform: ios
+              device_name: "Mike's iPhone"
+              app_version: "1.0.0"
+      responses:
+        '200':
+          description: Either authenticated session or signup required.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AuthenticatedResponse'
+                  - $ref: '#/components/schemas/SignupRequiredResponse'
+              examples:
+                authenticated:
+                  value:
+                    status: authenticated
+                    token: "est_XI3ZmjHz0bnrybRr4uQGmBMlpPmAycGl3urc-opGdsA"
+                    expires_at: "2027-06-11T21:43:39Z"
+                    partner_id: 22
+                    is_profile_complete: true
+                signupRequired:
+                  value:
+                    status: signup_required
+                    signup_token: "sst_9wK3s6vtE7r4m3Y8pQ"
+                    signup_expires_in: 900
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/auth/signup/complete:
+    post:
+      tags:
+        - Mobile - Auth
+      summary: Complete signup after OTP verification
+      description: |
+        Creates the partner/profile for an unknown phone after ownership was
+        proven by `/auth/otp/verify`, consumes the signup token, and returns an
+        authenticated mobile session.
+      operationId: mobileCompleteSignup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupCompleteRequest'
+            example:
+              signup_token: "sst_9wK3s6vtE7r4m3Y8pQ"
+              first_name: Alexandra
+              terms_accepted: true
+              device_id: "android-device-uuid"
+              platform: android
+              device_name: "Pixel 9"
+              app_version: "1.0.0"
+      responses:
+        '200':
+          description: Signup completed and mobile session issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/auth/logout:
+    post:
+      tags:
+        - Mobile - Auth
+      summary: Revoke current mobile session
+      operationId: mobileLogout
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Current session revoked or already gone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+              example:
+                revoked: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/auth/sessions:
+    get:
+      tags:
+        - Mobile - Auth
+      summary: List active mobile sessions
+      operationId: mobileListSessions
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Active non-expired sessions for the current profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/auth/sessions/revoke-all:
+    post:
+      tags:
+        - Mobile - Auth
+      summary: Revoke all active sessions for current profile
+      operationId: mobileRevokeAllSessions
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Number of sessions revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeAllSessionsResponse'
+              example:
+                revoked: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me:
+    get:
+      tags:
+        - Mobile - Profile
+      summary: Get current profile
+      operationId: mobileGetMe
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Current authenticated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Mobile - Profile
+      summary: Update current profile
+      description: |
+        Updates mutable profile fields. Unknown fields are rejected. Phone
+        changes are not accepted here; changing phone must go through an OTP
+        verification flow.
+      operationId: mobilePatchMe
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePatchRequest'
+            example:
+              first_name: Alexandra
+              last_name: Tester
+              email: alexandra@example.com
+              date_of_birth: "1990-01-11"
+              country_of_origin: ireland
+              gender: female
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/delete:
+    post:
+      tags:
+        - Mobile - Profile
+      summary: Request account deletion
+      description: |
+        Soft-deletes the loyalty profile and revokes all mobile sessions.
+        Hard deletion is handled later by retention cleanup.
+      operationId: mobileDeleteMe
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Account marked deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteProfileResponse'
+              example:
+                deleted: true
+                deleted_at: "2026-06-11T21:43:39Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/email/request:
+    post:
+      tags:
+        - Mobile - Profile
+      summary: Request email verification code
+      description: Sends a 6-digit code to the email currently saved on the profile.
+      operationId: mobileRequestEmailVerification
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Email verification code created and delivery attempted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationRequestResponse'
+              example:
+                expires_in: 86400
+                retry_after: 60
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+
+  /api/v1/mobile/me/email/verify:
+    post:
+      tags:
+        - Mobile - Profile
+      summary: Verify email code
+      operationId: mobileVerifyEmail
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailVerificationVerifyRequest'
+            example:
+              code: "123456"
+      responses:
+        '200':
+          description: Email verification state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationVerifyResponse'
+              example:
+                is_email_verified: true
+                is_profile_complete: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/card:
+    get:
+      tags:
+        - Mobile - Card
+      summary: Get digital loyalty card
+      description: |
+        Returns the member card code, points balance, and a pre-issued batch of
+        daily QR payloads. QR tokens are tied to the current session device for
+        audit.
+      operationId: mobileGetCard
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Digital loyalty card.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/points-history:
+    get:
+      tags:
+        - Mobile - Card
+      summary: Get recent points history
+      operationId: mobileGetPointsHistory
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Recent point-earning transactions, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PointsHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    MobileBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Mobile session token
+      description: Token returned by `/auth/otp/verify` or `/auth/signup/complete`.
+
+  responses:
+    BadRequest:
+      description: Invalid request payload or business validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: INVALID_FIELD
+              message: device_id is required
+              details:
+                field: device_id
+    Unauthorized:
+      description: Missing, invalid, expired, or revoked mobile session token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or expired session token
+    Conflict:
+      description: State conflict, for example email already verified or changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    LegalDocumentNotFound:
+      description: Requested legal document is not published.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: LEGAL_DOCUMENT_NOT_FOUND
+              message: No published terms document
+    RateLimit:
+      description: Request rate limit reached.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: OTP_RATE_LIMIT_REQUEST
+              message: Too many requests, try again in a minute
+              details:
+                retry_after: 60
+    InternalServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: INTERNAL_SERVER_ERROR
+              message: Internal server error
+    ServiceUnavailableError:
+      description: Temporary delivery/provider failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: OTP_DELIVERY_FAILED
+              message: Could not send verification code, try again
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: INVALID_FIELD
+            message:
+              type: string
+              example: device_id is required
+            details:
+              type: object
+              additionalProperties: true
+
+    MobileConfigResponse:
+      type: object
+      required:
+        - welcome_voucher
+        - legal
+        - countries
+        - genders
+      properties:
+        welcome_voucher:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/WelcomeVoucher'
+        legal:
+          type: object
+          required:
+            - terms
+            - privacy
+          properties:
+            terms:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/LegalVersion'
+            privacy:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/LegalVersion'
+        countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Option'
+        genders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Option'
+
+    WelcomeVoucher:
+      type: object
+      required:
+        - discount_cents
+        - min_purchase_cents
+        - label
+      properties:
+        discount_cents:
+          type: integer
+          example: 300
+        min_purchase_cents:
+          type: integer
+          example: 3000
+        label:
+          type: string
+          example: "€3 off €30"
+
+    LegalVersion:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          example: "2026-06-draft"
+
+    Option:
+      type: object
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+
+    LegalDocument:
+      type: object
+      required:
+        - doc_type
+        - title
+        - version
+        - body_html
+      properties:
+        doc_type:
+          type: string
+          enum:
+            - terms
+            - privacy
+        title:
+          type: string
+        version:
+          type: string
+        body_html:
+          type: string
+          description: HTML rendered as-is by the mobile app.
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    OtpRequest:
+      type: object
+      required:
+        - country
+        - phone
+      properties:
+        country:
+          $ref: '#/components/schemas/PhoneCountry'
+        phone:
+          type: string
+          description: National or international phone number. Separators are allowed.
+          example: "083 054 0215"
+
+    PhoneCountry:
+      type: string
+      enum:
+        - ie
+        - ni
+      description: "`ie` = Ireland (+353), `ni` = Northern Ireland (+44)."
+
+    OtpRequestResponse:
+      type: object
+      required:
+        - expires_in
+        - retry_after
+      properties:
+        expires_in:
+          type: integer
+          description: OTP TTL in seconds.
+          example: 300
+        retry_after:
+          type: integer
+          description: Recommended wait time before requesting another code.
+          example: 60
+
+    OtpVerifyRequest:
+      type: object
+      required:
+        - country
+        - phone
+        - code
+        - device_id
+        - platform
+      properties:
+        country:
+          $ref: '#/components/schemas/PhoneCountry'
+        phone:
+          type: string
+          example: "879991001"
+        code:
+          type: string
+          pattern: '^\d{6}$'
+          example: "654321"
+        device_id:
+          type: string
+          description: Stable app/device identifier generated by the mobile app.
+        platform:
+          $ref: '#/components/schemas/Platform'
+        device_name:
+          type: string
+          nullable: true
+        app_version:
+          type: string
+          nullable: true
+
+    Platform:
+      type: string
+      enum:
+        - ios
+        - android
+
+    AuthenticatedResponse:
+      type: object
+      required:
+        - status
+        - token
+        - expires_at
+        - partner_id
+        - is_profile_complete
+      properties:
+        status:
+          type: string
+          enum:
+            - authenticated
+        token:
+          type: string
+          description: Bearer token for authenticated mobile endpoints.
+          example: "est_XI3ZmjHz0bnrybRr4uQGmBMlpPmAycGl3urc-opGdsA"
+        expires_at:
+          type: string
+          format: date-time
+        partner_id:
+          type: integer
+        is_profile_complete:
+          type: boolean
+
+    SignupRequiredResponse:
+      type: object
+      required:
+        - status
+        - signup_token
+        - signup_expires_in
+      properties:
+        status:
+          type: string
+          enum:
+            - signup_required
+        signup_token:
+          type: string
+          example: "sst_9wK3s6vtE7r4m3Y8pQ"
+        signup_expires_in:
+          type: integer
+          description: Signup token TTL in seconds.
+
+    SignupCompleteRequest:
+      type: object
+      required:
+        - signup_token
+        - first_name
+        - terms_accepted
+        - device_id
+        - platform
+      properties:
+        signup_token:
+          type: string
+          description: Token returned by `/auth/otp/verify` when status is `signup_required`.
+          example: "sst_9wK3s6vtE7r4m3Y8pQ"
+        first_name:
+          type: string
+          maxLength: 100
+        terms_accepted:
+          type: boolean
+          description: Must be true.
+        device_id:
+          type: string
+        platform:
+          $ref: '#/components/schemas/Platform'
+        device_name:
+          type: string
+          nullable: true
+        app_version:
+          type: string
+          nullable: true
+
+    Profile:
+      type: object
+      required:
+        - partner_id
+        - first_name
+        - last_name
+        - phone
+        - email
+        - date_of_birth
+        - country_of_origin
+        - gender
+        - is_authenticated
+        - is_phone_verified
+        - is_email_verified
+        - is_profile_complete
+        - permissions
+      properties:
+        partner_id:
+          type: integer
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+          example: "+353879991001"
+        email:
+          type: string
+          format: email
+          nullable: true
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        country_of_origin:
+          type: string
+          nullable: true
+          example: ireland
+        gender:
+          type: string
+          nullable: true
+          enum:
+            - male
+            - female
+        is_authenticated:
+          type: boolean
+          example: true
+        is_phone_verified:
+          type: boolean
+        is_email_verified:
+          type: boolean
+        is_profile_complete:
+          type: boolean
+        permissions:
+          $ref: '#/components/schemas/ProfilePermissions'
+
+    ProfilePermissions:
+      type: object
+      required:
+        - can_browse_offers
+        - can_use_card
+        - can_earn_points
+        - can_spend_points
+        - can_redeem_vouchers
+      properties:
+        can_browse_offers:
+          type: boolean
+        can_use_card:
+          type: boolean
+        can_earn_points:
+          type: boolean
+        can_spend_points:
+          type: boolean
+        can_redeem_vouchers:
+          type: boolean
+
+    ProfilePatchRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          description: Must already match the current phone; phone changes require OTP.
+          pattern: '^\+(353|44)\d{6,12}$'
+        date_of_birth:
+          type: string
+          format: date
+        country_of_origin:
+          type: string
+          description: One of the `countries[].value` entries from `/config`.
+        gender:
+          type: string
+          nullable: true
+          enum:
+            - male
+            - female
+
+    DeleteProfileResponse:
+      type: object
+      required:
+        - deleted
+      properties:
+        deleted:
+          type: boolean
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    EmailVerificationRequestResponse:
+      type: object
+      required:
+        - expires_in
+        - retry_after
+      properties:
+        expires_in:
+          type: integer
+          example: 86400
+        retry_after:
+          type: integer
+          example: 60
+
+    EmailVerificationVerifyRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          pattern: '^\d{6}$'
+          example: "123456"
+
+    EmailVerificationVerifyResponse:
+      type: object
+      required:
+        - is_email_verified
+        - is_profile_complete
+      properties:
+        is_email_verified:
+          type: boolean
+        is_profile_complete:
+          type: boolean
+
+    CardResponse:
+      type: object
+      required:
+        - card_code
+        - points_balance
+        - qr_tokens
+      properties:
+        card_code:
+          type: string
+          nullable: true
+          example: "3806868525361001"
+        points_balance:
+          type: integer
+          example: 0
+        qr_tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/QrToken'
+
+    QrToken:
+      type: object
+      required:
+        - business_date
+        - valid_from
+        - valid_until
+        - qr_payload
+      properties:
+        business_date:
+          type: string
+          format: date
+          example: "2026-06-11"
+        valid_from:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        qr_payload:
+          type: string
+          example: "lq1.20260611.FQIMFTM5GZNVQU..."
+
+    PointsHistoryResponse:
+      type: object
+      required:
+        - transactions
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PointsTransaction'
+
+    PointsTransaction:
+      type: object
+      required:
+        - id
+        - date
+        - store_name
+        - amount_cents
+        - points
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date-time
+          nullable: true
+        store_name:
+          type: string
+          nullable: true
+        amount_cents:
+          type: integer
+        points:
+          type: integer
+
+    LogoutResponse:
+      type: object
+      required:
+        - revoked
+      properties:
+        revoked:
+          type: boolean
+
+    SessionsResponse:
+      type: object
+      required:
+        - sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MobileSession'
+
+    MobileSession:
+      type: object
+      required:
+        - id
+        - device_id
+        - platform
+        - created_at
+        - last_used_at
+        - expires_at
+        - is_current
+      properties:
+        id:
+          type: integer
+        device_id:
+          type: string
+        device_name:
+          type: string
+          nullable: true
+        platform:
+          $ref: '#/components/schemas/Platform'
+        app_version:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        is_current:
+          type: boolean
+
+    RevokeAllSessionsResponse:
+      type: object
+      required:
+        - revoked
+      properties:
+        revoked:
+          type: integer
