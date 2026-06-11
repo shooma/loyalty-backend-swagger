@@ -14,6 +14,7 @@ The Swagger UI contains separate specs in the top dropdown:
 - Cash-register API contract: [`loyalty.yaml`](./loyalty.yaml)
 - Mobile app API contract: [`mobile.yaml`](./mobile.yaml)
 - Backend behavior notes for POS integrators (v1): [`v1.md`](./v1.md)
+- Mobile app onboarding guide (auth flow, staging OTP, demo accounts): [`mobile.md`](./mobile.md)
 
 ## Integration test credentials (wiki quick reference)
 
