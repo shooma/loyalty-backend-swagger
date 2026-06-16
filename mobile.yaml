@@ -43,6 +43,8 @@ tags:
     description: Authenticated customer profile lifecycle.
   - name: Mobile - Card
     description: Authenticated digital card, QR tokens, and points history.
+  - name: Mobile - Vouchers
+    description: Authenticated voucher listing, detail, and claiming.
 
 paths:
   /api/v1/mobile/config:
@@ -63,9 +65,9 @@ paths:
                 $ref: '#/components/schemas/MobileConfigResponse'
               example:
                 welcome_voucher:
-                  discount_cents: 300
-                  min_purchase_cents: 3000
-                  label: "€3 off €30"
+                  discount_cents: 500
+                  min_purchase_cents: 2500
+                  label: "€5 off €25"
                 legal:
                   terms:
                     version: "2026-06-draft"
@@ -242,7 +244,8 @@ paths:
       description: |
         Creates the partner/profile for an unknown phone after ownership was
         proven by `/auth/otp/verify`, consumes the signup token, and returns an
-        authenticated mobile session.
+        authenticated mobile session. A personal welcome voucher (one per member
+        for life) is granted on completion and appears in `GET /vouchers`.
       operationId: mobileCompleteSignup
       requestBody:
         required: true
@@ -526,6 +529,160 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/vouchers:
+    get:
+      tags:
+        - Mobile - Vouchers
+      summary: List my vouchers
+      description: |
+        Returns the member's vouchers, soonest-to-expire first. By default only
+        usable vouchers (`Active` + `Issued`) are returned; pass `status` to
+        widen into history. Optional `amount` (exact discount in cents) and `q`
+        (substring over voucher description and code) filter the list.
+      operationId: mobileListVouchers
+      security:
+        - MobileBearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Comma-separated statuses to include (active, issued, used, expired,
+            revoked). Defaults to active,issued.
+          schema:
+            type: string
+          example: active,issued
+        - name: amount
+          in: query
+          required: false
+          description: Exact voucher discount value in cents.
+          schema:
+            type: integer
+          example: 500
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring search over voucher description and code.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The member's vouchers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoucherListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/vouchers/{code}:
+    get:
+      tags:
+        - Mobile - Vouchers
+      summary: Get one of my vouchers
+      operationId: mobileGetVoucher
+      security:
+        - MobileBearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Voucher redeem code.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The voucher.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Voucher not found or not owned by the member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: NOT_FOUND
+                  message: Voucher not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/vouchers/claim:
+    post:
+      tags:
+        - Mobile - Vouchers
+      summary: Claim a printed voucher
+      description: |
+        Attaches an anonymous printed voucher (scanned from a paper receipt) to
+        the member's account. Only a currently-anonymous, still-usable voucher
+        (`Active` or `Issued`) can be claimed; re-claiming one's own voucher is
+        idempotent. Redemption itself happens at the till, not here.
+      operationId: mobileClaimVoucher
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimVoucherRequest'
+            example:
+              code: "BUY-7K3M9QF2X1A4D8C0"
+      responses:
+        '200':
+          description: The claimed voucher, now linked to the member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+        '400':
+          description: Voucher is not claimable (used, expired, revoked) or code missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: VOUCHER_NOT_CLAIMABLE
+                  message: Voucher is not claimable (used, expired, or revoked)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Voucher code does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: VOUCHER_NOT_FOUND
+                  message: Voucher not found
+        '409':
+          description: Voucher already claimed by another member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: ALREADY_CLAIMED
+                  message: Voucher already claimed by another member
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     MobileBearerAuth:
@@ -682,13 +839,13 @@ components:
       properties:
         discount_cents:
           type: integer
-          example: 300
+          example: 500
         min_purchase_cents:
           type: integer
-          example: 3000
+          example: 2500
         label:
           type: string
-          example: "€3 off €30"
+          example: "€5 off €25"
 
     LegalVersion:
       type: object
@@ -1116,6 +1273,92 @@ components:
       properties:
         revoked:
           type: boolean
+
+    Voucher:
+      type: object
+      required:
+        - code
+        - type
+        - status
+        - description
+        - discount_cents
+        - min_purchase_cents
+        - valid_from
+        - valid_until
+        - received_at
+        - redeemed_at
+        - receipt
+        - qr_code_payload
+        - printed
+      properties:
+        code:
+          type: string
+          example: "BUY-7K3M9QF2X1A4D8C0"
+        type:
+          type: string
+          enum: [welcome, birthday, x_off_y, individual]
+        status:
+          type: string
+          enum: [Issued, Active, Used, Expired, Revoked]
+        description:
+          type: string
+          example: "Voucher 5 off 25"
+        discount_cents:
+          type: integer
+          example: 500
+        min_purchase_cents:
+          type: integer
+          example: 2500
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: Start of the validity window (UTC, start of day).
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: End of the validity window (UTC, end of day).
+        received_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the voucher was issued.
+        redeemed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the voucher was redeemed at the till; null if unused.
+        receipt:
+          type: string
+          nullable: true
+          description: Receipt number the voucher was redeemed on; null if unused.
+        qr_code_payload:
+          type: string
+          description: Payload to render as a QR for scanning at the till (equals the code).
+        printed:
+          type: boolean
+          description: True for anonymous receipt vouchers; false for member-owned ones.
+
+    VoucherListResponse:
+      type: object
+      required:
+        - vouchers
+      properties:
+        vouchers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Voucher'
+
+    ClaimVoucherRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: The printed voucher code scanned from a paper receipt.
+          example: "BUY-7K3M9QF2X1A4D8C0"
 
     SessionsResponse:
       type: object
