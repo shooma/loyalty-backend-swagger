@@ -1311,14 +1311,19 @@ components:
           example: 2500
         valid_from:
           type: string
-          format: date-time
           nullable: true
-          description: Start of the validity window (UTC, start of day).
+          description: >-
+            Start of the validity window as a store-local calendar boundary
+            (`YYYY-MM-DDT00:00:00`, no timezone). It is a calendar day, not a
+            UTC instant — the till evaluates validity on the local date.
+          example: "2026-06-16T00:00:00"
         valid_until:
           type: string
-          format: date-time
           nullable: true
-          description: End of the validity window (UTC, end of day).
+          description: >-
+            End of the validity window as a store-local calendar boundary
+            (`YYYY-MM-DDT23:59:59`, no timezone).
+          example: "2026-06-30T23:59:59"
         received_at:
           type: string
           format: date-time
