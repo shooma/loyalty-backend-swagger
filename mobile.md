@@ -203,6 +203,9 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
 | GET | `/api/v1/mobile/me/card` | Digital card + points + daily QR batch |
 | GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions |
+| GET | `/api/v1/mobile/vouchers` | List my vouchers (filters: `status`, `amount`, `q`) |
+| GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
+| POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |
 | POST | `/api/v1/mobile/auth/logout` | Revoke this device's session |
 | POST | `/api/v1/mobile/auth/sessions/revoke-all` | Revoke all sessions |
@@ -248,3 +251,58 @@ curl -s $BASE/api/v1/mobile/me/card -H "Authorization: Bearer $TOKEN" | jq
 Errors carry a machine-readable code (e.g. `INVALID_COUNTRY`, `INVALID_PLATFORM`,
 `INVALID_JSON`, `OTP_RATE_LIMIT_REQUEST`, `OTP_LOCKED`) — see the error schemas in
 `mobile.yaml`.
+
+---
+
+## 8. Vouchers
+
+The app surfaces vouchers; **redemption happens at the till** (Cash Register
+API), not in the app. Money fields are in cents.
+
+### Listing
+
+`GET /vouchers` returns the member's vouchers, soonest-to-expire first:
+
+```bash
+curl -s "$BASE/api/v1/mobile/vouchers" -H "Authorization: Bearer $TOKEN" | jq
+```
+
+- `?status=` — comma-separated `active,issued,used,expired,revoked`. Default
+  `active,issued` (usable now/soon). Pass e.g. `?status=used,expired` for history.
+- `?amount=` — exact discount value in cents (e.g. `500` = €5).
+- `?q=` — substring over voucher description and code.
+
+`GET /vouchers/{code}` returns a single owned voucher (`404 NOT_FOUND` if it
+isn't the member's).
+
+### Claiming a printed voucher
+
+`POST /vouchers/claim {"code":"..."}` attaches an anonymous voucher scanned from
+a paper receipt to the member:
+
+- Must be currently **anonymous** and **usable** (`Active`/`Issued`).
+- Re-claiming your own → `200` (idempotent).
+- Belongs to another member → `409 ALREADY_CLAIMED`.
+- Used/expired/revoked → `400 VOUCHER_NOT_CLAIMABLE`. Unknown → `404 VOUCHER_NOT_FOUND`.
+
+### Voucher fields & statuses
+
+DTO: `code`, `type`, `status`, `description`, `discount_cents`,
+`min_purchase_cents`, `valid_from`, `valid_until`, `received_at`, `redeemed_at`,
+`receipt`, `qr_code_payload`, `printed`.
+
+Status lifecycle: `Issued` → `Active` → `Used` / `Expired` / `Revoked`.
+
+### How vouchers are distributed
+
+| Type | Issued | Audience | Validity |
+|---|---|---|---|
+| `welcome` | once per member, on sign-up completion | member | from receipt, 14 days |
+| `x_off_y` | at the till on spend thresholds (rules) | anonymous and/or registered | per rule |
+| `birthday` | daily cron around the member's birthday (once/year) | member | birthday window |
+| `individual` | manually from the back office | member | per issuance |
+
+Seeded spend-threshold rules: **€5 off €25** (anonymous, 14d), **€5 off €25**
+(registered, 365d), **€10 off €50** (registered, 365d). A single receipt can
+yield multiple vouchers. Verification gates spending/redeeming of non-welcome
+vouchers; the welcome voucher is usable even before full verification.
