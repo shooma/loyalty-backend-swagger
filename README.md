@@ -26,10 +26,9 @@ Use these dedicated users first for manual and automated integration runs:
 4. `Integration Tester 04`: phone `+353879991004`, card `3806868525361004`
 5. `Integration Tester 05`: phone `+353879991005`, card `3806868525361005`
 
-Each test user is pre-seeded with 15 active personal vouchers:
-- 5x `2 off 15`
+Each test user is pre-seeded with 10 active personal vouchers:
 - 5x `5 off 25`
-- 5x `11 off 50`
+- 5x `10 off 50`
 
 ## Available environments
 
