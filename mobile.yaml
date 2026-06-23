@@ -45,6 +45,8 @@ tags:
     description: Authenticated digital card, QR tokens, and points history.
   - name: Mobile - Vouchers
     description: Authenticated voucher listing, detail, and claiming.
+  - name: Mobile - Stores
+    description: Authenticated store/map listing for the current country.
 
 paths:
   /api/v1/mobile/config:
@@ -761,6 +763,40 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/stores:
+    get:
+      tags:
+        - Mobile - Stores
+      summary: List stores for the current country
+      description: |
+        Returns the active shops of the member's current operating country, both
+        brands (Polonez and Eastore), ordered by name. Switch country with
+        `PUT /me/country`. Coordinates power the map; `maps_url` is a fallback link.
+      operationId: mobileListStores
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Stores for the member's current country.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoresResponse'
+              example:
+                stores:
+                  - code: "ARTAN"
+                    name: Artane
+                    format: polonez
+                    country: ie
+                    address: "Artane, Unit 11 Butterfly, D05 C856, Ireland"
+                    maps_url: "https://goo.gl/YRmd5Rom3WquTAnn7"
+                    latitude: 53.3851
+                    longitude: -6.21356
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     MobileBearerAuth:
@@ -1029,6 +1065,60 @@ components:
       properties:
         country:
           $ref: '#/components/schemas/OperatingCountry'
+
+    StoresResponse:
+      type: object
+      required:
+        - stores
+      properties:
+        stores:
+          type: array
+          items:
+            $ref: '#/components/schemas/Store'
+
+    Store:
+      type: object
+      required:
+        - code
+        - name
+        - format
+        - country
+        - address
+        - maps_url
+        - latitude
+        - longitude
+      properties:
+        code:
+          type: string
+          description: 5-char shop identifier (same as POS shop_id).
+          example: "ARTAN"
+        name:
+          type: string
+          example: Artane
+        format:
+          type: string
+          enum: [polonez, eastore]
+          description: Store brand/format.
+        country:
+          $ref: '#/components/schemas/OperatingCountry'
+        address:
+          type: string
+          nullable: true
+          example: "Artane, Unit 11 Butterfly, D05 C856, Ireland"
+        maps_url:
+          type: string
+          nullable: true
+          description: Google Maps link; fallback when coordinates are unavailable.
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          example: 53.3851
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          example: -6.21356
 
     OtpRequestResponse:
       type: object

@@ -207,6 +207,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
 | POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
+| GET | `/api/v1/mobile/stores` | Stores for current country, both brands (map: lat/lng + maps_url) |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |
 | POST | `/api/v1/mobile/auth/logout` | Revoke this device's session |
 | POST | `/api/v1/mobile/auth/sessions/revoke-all` | Revoke all sessions |
