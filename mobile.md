@@ -182,9 +182,9 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 ### Public (no auth)
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/mobile/config` | Welcome voucher, legal doc versions, country/gender dropdowns (call before login) |
-| GET | `/api/v1/mobile/legal/terms` | Terms & Conditions HTML |
-| GET | `/api/v1/mobile/legal/privacy` | Privacy Policy HTML |
+| GET | `/api/v1/mobile/config` | Welcome voucher, legal doc versions, country/gender dropdowns (call before login). `?country=ie\|ni` (default `ie`) |
+| GET | `/api/v1/mobile/legal/terms` | Terms & Conditions HTML. `?country=ie\|ni` (default `ie`) |
+| GET | `/api/v1/mobile/legal/privacy` | Privacy Policy HTML. `?country=ie\|ni` (default `ie`) |
 
 ### Auth (no token)
 | Method | Path | Purpose |
@@ -196,14 +196,15 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 ### Authenticated (`Authorization: Bearer est_...`)
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/mobile/me` | Profile |
+| GET | `/api/v1/mobile/me` | Profile (incl. `current_country`) |
 | PATCH | `/api/v1/mobile/me` | Update profile (phone change rejected) |
+| PUT | `/api/v1/mobile/me/country` | Switch operating country IE/NI (points/vouchers not transferred) |
 | POST | `/api/v1/mobile/me/delete` | Soft-delete account |
 | POST | `/api/v1/mobile/me/email/request` | Request email verification code |
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
-| GET | `/api/v1/mobile/me/card` | Digital card + points + daily QR batch |
-| GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions |
-| GET | `/api/v1/mobile/vouchers` | List my vouchers (filters: `status`, `amount`, `q`) |
+| GET | `/api/v1/mobile/me/card` | Digital card + points + currency + daily QR batch (current country) |
+| GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions (current country) |
+| GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
 | POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |

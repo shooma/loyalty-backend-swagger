@@ -42,6 +42,7 @@ paths:
         - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
+        - The operating country (IE/NI) and currency are determined by the `shop_id`'s shop, not by the member. `points_balance` reflects the member's wallet for that country, and a voucher belonging to the other country is reported as not applied with `reason_code: WRONG_COUNTRY`.
         - Authorization is token-based with scope:
           - POS-scoped token: `X-Pos-Id` header is optional
           - Store-scoped token: `X-Pos-Id` header is required
@@ -436,7 +437,12 @@ components:
           example: "Voucher 5 of 25"
         reason_code:
           type: string
-          description: Machine-readable reason why the voucher was not applied
+          description: >-
+            Machine-readable reason why the voucher was not applied. Common values:
+            `LOW_PURCHASE_AMOUNT`, `DISCOUNT_CAP_REACHED`, `NOT_STARTED`,
+            `ALREADY_USED`, `VOUCHER_EXPIRED`, `VOUCHER_REVOKED`, `VOUCHER_NOT_FOUND`,
+            `MEMBER_MISMATCH`, `MEMBER_REQUIRED`, `WRONG_COUNTRY` (voucher belongs to
+            the other country than the shop).
           example: "LOW_PURCHASE_AMOUNT"
         reason:
           type: string

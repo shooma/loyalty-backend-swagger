@@ -55,7 +55,13 @@ paths:
       description: |
         Returns welcome-voucher display information, legal document versions,
         and dropdown options needed by the app before login.
+
+        Scoped to the operating country via `?country=ie|ni` (default `ie`): the
+        welcome voucher and legal versions are the selected country's, and the
+        welcome amount is labelled in that country's currency (IE→EUR, NI→GBP).
       operationId: mobileGetConfig
+      parameters:
+        - $ref: '#/components/parameters/CountryQueryParam'
       responses:
         '200':
           description: Public app configuration.
@@ -67,6 +73,7 @@ paths:
                 welcome_voucher:
                   discount_cents: 500
                   min_purchase_cents: 2500
+                  currency: EUR
                   label: "€5 off €25"
                 legal:
                   terms:
@@ -91,7 +98,12 @@ paths:
       tags:
         - Mobile - Public
       summary: Get Terms & Conditions
+      description: |
+        Returns the published Terms & Conditions for the operating country
+        (`?country=ie|ni`, default `ie`).
       operationId: mobileGetTerms
+      parameters:
+        - $ref: '#/components/parameters/CountryQueryParam'
       responses:
         '200':
           description: Published Terms & Conditions document.
@@ -115,7 +127,12 @@ paths:
       tags:
         - Mobile - Public
       summary: Get Privacy Policy
+      description: |
+        Returns the published Privacy Policy for the operating country
+        (`?country=ie|ni`, default `ie`).
       operationId: mobileGetPrivacy
+      parameters:
+        - $ref: '#/components/parameters/CountryQueryParam'
       responses:
         '200':
           description: Published Privacy Policy document.
@@ -246,6 +263,10 @@ paths:
         proven by `/auth/otp/verify`, consumes the signup token, and returns an
         authenticated mobile session. A personal welcome voucher (one per member
         for life) is granted on completion and appears in `GET /vouchers`.
+
+        The operating country (`current_country`) is derived from the phone
+        prefix (`+353` → `ie`, `+44` → `ni`); the welcome voucher is issued in
+        that country. It can be changed later via `PUT /me/country`.
       operationId: mobileCompleteSignup
       requestBody:
         required: true
@@ -394,6 +415,53 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/me/country:
+    put:
+      tags:
+        - Mobile - Profile
+      summary: Switch operating country (IE/NI)
+      description: |
+        Switches the member's operating country between Ireland (`ie`) and
+        Northern Ireland (`ni`). Points and vouchers are **not** transferred —
+        each country has its own balance and voucher set; the app should refetch
+        all country-scoped screens (card, vouchers, points history, legal) after
+        switching. Returns the updated profile.
+      operationId: mobileSetCountry
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetCountryRequest'
+            example:
+              country: ni
+      responses:
+        '200':
+          description: Updated profile with the new current country.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          description: Invalid country value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: INVALID_COUNTRY
+                  message: country must be 'ie' or 'ni'
+                  details:
+                    field: country
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/mobile/me/delete:
     post:
       tags:
@@ -494,6 +562,10 @@ paths:
         Returns the member card code, points balance, and a pre-issued batch of
         daily QR payloads. QR tokens are tied to the current session device for
         audit.
+
+        The `points_balance` and `currency` are for the member's current country;
+        the `card_code` and QR set are country-independent (one identity). At the
+        till the country is determined by the shop, not the QR.
       operationId: mobileGetCard
       security:
         - MobileBearerAuth: []
@@ -514,6 +586,9 @@ paths:
       tags:
         - Mobile - Card
       summary: Get recent points history
+      description: |
+        Recent point-earning transactions for the member's current country,
+        newest first. Transactions made in the other country are not included.
       operationId: mobileGetPointsHistory
       security:
         - MobileBearerAuth: []
@@ -539,6 +614,9 @@ paths:
         usable vouchers (`Active` + `Issued`) are returned; pass `status` to
         widen into history. Optional `amount` (exact discount in cents) and `q`
         (substring over voucher description and code) filter the list.
+
+        Scoped to the member's current country: only vouchers belonging to that
+        country's programmes are returned (switch with `PUT /me/country`).
       operationId: mobileListVouchers
       security:
         - MobileBearerAuth: []
@@ -691,6 +769,18 @@ components:
       bearerFormat: Mobile session token
       description: Token returned by `/auth/otp/verify` or `/auth/signup/complete`.
 
+  parameters:
+    CountryQueryParam:
+      name: country
+      in: query
+      required: false
+      description: >-
+        Operating country to scope the response to (`ie` = Ireland, `ni` =
+        Northern Ireland). Defaults to `ie` when absent or invalid.
+      schema:
+        $ref: '#/components/schemas/OperatingCountry'
+      example: ie
+
   responses:
     BadRequest:
       description: Invalid request payload or business validation error.
@@ -835,6 +925,7 @@ components:
       required:
         - discount_cents
         - min_purchase_cents
+        - currency
         - label
       properties:
         discount_cents:
@@ -843,6 +934,8 @@ components:
         min_purchase_cents:
           type: integer
           example: 2500
+        currency:
+          $ref: '#/components/schemas/Currency'
         label:
           type: string
           example: "€5 off €25"
@@ -911,6 +1004,31 @@ components:
         - ie
         - ni
       description: "`ie` = Ireland (+353), `ni` = Northern Ireland (+44)."
+
+    OperatingCountry:
+      type: string
+      enum:
+        - ie
+        - ni
+      description: >-
+        Operating country that scopes a member's balance, vouchers, shops and
+        legal documents. `ie` = Ireland (EUR), `ni` = Northern Ireland (GBP).
+        Distinct from `country_of_origin` (nationality).
+
+    Currency:
+      type: string
+      enum:
+        - EUR
+        - GBP
+      description: Currency of the operating country (IE→EUR, NI→GBP).
+
+    SetCountryRequest:
+      type: object
+      required:
+        - country
+      properties:
+        country:
+          $ref: '#/components/schemas/OperatingCountry'
 
     OtpRequestResponse:
       type: object
@@ -1046,6 +1164,7 @@ components:
         - email
         - date_of_birth
         - country_of_origin
+        - current_country
         - gender
         - is_authenticated
         - is_phone_verified
@@ -1076,7 +1195,15 @@ components:
         country_of_origin:
           type: string
           nullable: true
+          description: Member nationality (demographic); distinct from current_country.
           example: ireland
+        current_country:
+          allOf:
+            - $ref: '#/components/schemas/OperatingCountry'
+          description: >-
+            Operating country (IE/NI). Set from the phone prefix at signup,
+            switchable via PUT /me/country. Scopes balance, vouchers and legal.
+          example: ie
         gender:
           type: string
           nullable: true
@@ -1197,15 +1324,20 @@ components:
       required:
         - card_code
         - points_balance
+        - currency
         - qr_tokens
       properties:
         card_code:
           type: string
           nullable: true
+          description: Stable 16-digit member card number; country-independent identity.
           example: "3806868525361001"
         points_balance:
           type: integer
+          description: Points balance for the member's current country.
           example: 0
+        currency:
+          $ref: '#/components/schemas/Currency'
         qr_tokens:
           type: array
           items:
@@ -1283,6 +1415,7 @@ components:
         - description
         - discount_cents
         - min_purchase_cents
+        - currency
         - valid_from
         - valid_until
         - received_at
@@ -1309,6 +1442,8 @@ components:
         min_purchase_cents:
           type: integer
           example: 2500
+        currency:
+          $ref: '#/components/schemas/Currency'
         valid_from:
           type: string
           nullable: true
