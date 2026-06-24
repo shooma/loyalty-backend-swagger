@@ -45,6 +45,8 @@ tags:
     description: Authenticated digital card, QR tokens, and points history.
   - name: Mobile - Vouchers
     description: Authenticated voucher listing, detail, and claiming.
+  - name: Mobile - Offers
+    description: Authenticated promotional campaigns, offers, banners, and media.
   - name: Mobile - Stores
     description: Authenticated store/map listing for the current country.
 
@@ -763,6 +765,256 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/offers/campaigns:
+    get:
+      tags:
+        - Mobile - Offers
+      summary: List visible offer campaigns
+      description: |
+        Returns campaign cards for the member's current operating country
+        (country-specific plus country-less campaigns). The app can use this
+        response for the Home carousel and for a listing filter/selector.
+
+        Visibility is controlled by the backend: only active campaigns whose
+        publication window has started and whose validity has not expired are
+        returned. Switch country with `PUT /me/country`.
+      operationId: mobileListOfferCampaigns
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Visible offer campaigns.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferCampaignsResponse'
+              example:
+                campaigns:
+                  - id: 101
+                    title: Weekend specials
+                    description: Offers valid this weekend
+                    country: ie
+                    image_url: /offers/media/campaign-image/101
+                    leaflet_url: /offers/media/campaign-leaflet/101
+                    valid_from: "2026-06-26"
+                    valid_until: "2026-06-29"
+                    offer_count: 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/offers:
+    get:
+      tags:
+        - Mobile - Offers
+      summary: List visible offers and banners
+      description: |
+        Returns offers from currently-visible campaigns for the member's current
+        operating country, plus active standalone banners for the same country
+        (or country-less banners). Offers are ordered by campaign, priority
+        descending, then title ascending.
+
+        Use `limit`/`offset` for lazy loading. `total` is the unpaginated offer
+        count. `campaign_id` limits the offer list to one visible campaign;
+        banners are still returned for the listing page.
+      operationId: mobileListOffers
+      security:
+        - MobileBearerAuth: []
+      parameters:
+        - name: campaign_id
+          in: query
+          required: false
+          description: Optional visible campaign id to filter the offers list.
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Page size. Defaults to 12 and is capped at 100.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 12
+        - name: offset
+          in: query
+          required: false
+          description: Pagination offset. Defaults to 0.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Paginated offers and listing banners.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OffersResponse'
+              example:
+                offers:
+                  - id: 501
+                    campaign_id: 101
+                    title: Polish dumplings
+                    description: Frozen pierogi selection
+                    weight: 450g
+                    country: ie
+                    image_url: /offers/media/offer-image/501
+                    promotion_type:
+                      code: discount
+                      name: Discount
+                      badge_url: /offers/media/promotion-badge/3
+                    has_price: true
+                    price:
+                      text_1: now
+                      value_1: "2.99"
+                      text_2: was
+                      value_2: "3.49"
+                      unit: each
+                    valid_from: "2026-06-26"
+                    valid_until: "2026-06-29"
+                  - id: 502
+                    campaign_id: 101
+                    title: Ask in store
+                    description: Price available in store
+                    weight: null
+                    country: ie
+                    image_url: /offers/media/offer-image/502
+                    promotion_type: null
+                    has_price: false
+                    price: null
+                    valid_from: "2026-06-26"
+                    valid_until: "2026-06-29"
+                banners:
+                  - id: 301
+                    name: Fresh bakery leaflet
+                    country: null
+                    image_url: /offers/media/banner-image/301
+                    leaflet_url: /offers/media/banner-leaflet/301
+                total: 24
+                limit: 12
+                offset: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/offers/{offer_id}:
+    get:
+      tags:
+        - Mobile - Offers
+      summary: Get a visible offer
+      description: |
+        Returns one offer if it belongs to a currently-visible campaign for the
+        member's current operating country. Expired, unpublished, cross-country,
+        or unknown offers return `404 NOT_FOUND`.
+      operationId: mobileGetOffer
+      security:
+        - MobileBearerAuth: []
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Offer detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferDetailResponse'
+              example:
+                offer:
+                  id: 501
+                  campaign_id: 101
+                  title: Polish dumplings
+                  description: Frozen pierogi selection
+                  weight: 450g
+                  country: ie
+                  image_url: /offers/media/offer-image/501
+                  promotion_type:
+                    code: discount
+                    name: Discount
+                    badge_url: /offers/media/promotion-badge/3
+                  has_price: true
+                  price:
+                    text_1: now
+                    value_1: "2.99"
+                    text_2: was
+                    value_2: "3.49"
+                    unit: each
+                  valid_from: "2026-06-26"
+                  valid_until: "2026-06-29"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Offer not found or not currently visible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: NOT_FOUND
+                  message: Offer not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/offers/media/{kind}/{id}:
+    get:
+      tags:
+        - Mobile - Offers
+      summary: Stream public offer media
+      description: |
+        Public image/PDF endpoint used by `image_url`, `leaflet_url`, and
+        `badge_url` fields. The endpoint does not require a Bearer token because
+        the assets are promotional, but it only serves whitelisted binary fields
+        from currently-visible records. Unknown, empty, expired, unpublished, or
+        inactive assets return 404.
+      operationId: mobileGetOfferMedia
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - campaign-image
+              - campaign-leaflet
+              - offer-image
+              - banner-image
+              - banner-leaflet
+              - promotion-badge
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Binary image or PDF stream.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Media not found or not currently visible.
+
   /api/v1/mobile/stores:
     get:
       tags:
@@ -771,7 +1023,9 @@ paths:
       description: |
         Returns the active shops of the member's current operating country, both
         brands (Polonez and Eastore), ordered by name. Switch country with
-        `PUT /me/country`. Coordinates power the map; `maps_url` is a fallback link.
+        `PUT /me/country`. Coordinates power the map; `maps_url` is a fallback
+        link. Opening hours are returned both as display text and structured
+        weekly intervals for future "open now" filtering.
       operationId: mobileListStores
       security:
         - MobileBearerAuth: []
@@ -792,6 +1046,25 @@ paths:
                     maps_url: "https://goo.gl/YRmd5Rom3WquTAnn7"
                     latitude: 53.3851
                     longitude: -6.21356
+                    opening_hours_display: "Mon-Sat 10:00-20:00; Sun 11:00-19:00"
+                    opening_hours_source: website
+                    opening_hours:
+                      timezone: Europe/Dublin
+                      weekly:
+                        mon:
+                          - ["10:00", "20:00"]
+                        tue:
+                          - ["10:00", "20:00"]
+                        wed:
+                          - ["10:00", "20:00"]
+                        thu:
+                          - ["10:00", "20:00"]
+                        fri:
+                          - ["10:00", "20:00"]
+                        sat:
+                          - ["10:00", "20:00"]
+                        sun:
+                          - ["11:00", "19:00"]
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1066,6 +1339,241 @@ components:
         country:
           $ref: '#/components/schemas/OperatingCountry'
 
+    OfferCampaignsResponse:
+      type: object
+      required:
+        - campaigns
+      properties:
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfferCampaign'
+
+    OfferCampaign:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - country
+        - image_url
+        - leaflet_url
+        - valid_from
+        - valid_until
+        - offer_count
+      properties:
+        id:
+          type: integer
+          example: 101
+        title:
+          type: string
+          example: Weekend specials
+        description:
+          type: string
+          nullable: true
+          example: Offers valid this weekend
+        country:
+          type: string
+          nullable: true
+          enum: [ie, ni]
+          description: Null means visible in both operating countries.
+        image_url:
+          type: string
+          nullable: true
+          description: Mobile-relative URL for the campaign image.
+          example: /offers/media/campaign-image/101
+        leaflet_url:
+          type: string
+          nullable: true
+          description: Mobile-relative URL for the optional campaign PDF leaflet.
+          example: /offers/media/campaign-leaflet/101
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_until:
+          type: string
+          format: date
+          nullable: true
+        offer_count:
+          type: integer
+          example: 12
+
+    OffersResponse:
+      type: object
+      required:
+        - offers
+        - banners
+        - total
+        - limit
+        - offset
+      properties:
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Offer'
+        banners:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfferBanner'
+        total:
+          type: integer
+          description: Unpaginated number of visible offers matching the filter.
+          example: 24
+        limit:
+          type: integer
+          example: 12
+        offset:
+          type: integer
+          example: 0
+
+    OfferDetailResponse:
+      type: object
+      required:
+        - offer
+      properties:
+        offer:
+          $ref: '#/components/schemas/Offer'
+
+    Offer:
+      type: object
+      required:
+        - id
+        - campaign_id
+        - title
+        - description
+        - weight
+        - country
+        - image_url
+        - promotion_type
+        - has_price
+        - price
+        - valid_from
+        - valid_until
+      properties:
+        id:
+          type: integer
+          example: 501
+        campaign_id:
+          type: integer
+          example: 101
+        title:
+          type: string
+          example: Polish dumplings
+        description:
+          type: string
+          nullable: true
+        weight:
+          type: string
+          nullable: true
+          example: 450g
+        country:
+          type: string
+          nullable: true
+          enum: [ie, ni]
+          description: Null means visible in both operating countries.
+        image_url:
+          type: string
+          nullable: true
+          example: /offers/media/offer-image/501
+        promotion_type:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OfferPromotionType'
+        has_price:
+          type: boolean
+          description: When false, `price` is null and the app should show the in-store price fallback.
+        price:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OfferPrice'
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_until:
+          type: string
+          format: date
+          nullable: true
+
+    OfferPrice:
+      type: object
+      required:
+        - text_1
+        - value_1
+        - text_2
+        - value_2
+        - unit
+      properties:
+        text_1:
+          type: string
+          nullable: true
+          example: now
+        value_1:
+          type: string
+          nullable: true
+          example: "2.99"
+        text_2:
+          type: string
+          nullable: true
+          example: was
+        value_2:
+          type: string
+          nullable: true
+          example: "3.49"
+        unit:
+          type: string
+          nullable: true
+          example: each
+
+    OfferPromotionType:
+      type: object
+      required:
+        - code
+        - name
+        - badge_url
+      properties:
+        code:
+          type: string
+          example: discount
+        name:
+          type: string
+          example: Discount
+        badge_url:
+          type: string
+          nullable: true
+          example: /offers/media/promotion-badge/3
+
+    OfferBanner:
+      type: object
+      required:
+        - id
+        - name
+        - country
+        - image_url
+        - leaflet_url
+      properties:
+        id:
+          type: integer
+          example: 301
+        name:
+          type: string
+          nullable: true
+          example: Fresh bakery leaflet
+        country:
+          type: string
+          nullable: true
+          enum: [ie, ni]
+          description: Null means visible in both operating countries.
+        image_url:
+          type: string
+          nullable: true
+          example: /offers/media/banner-image/301
+        leaflet_url:
+          type: string
+          nullable: true
+          example: /offers/media/banner-leaflet/301
+
     StoresResponse:
       type: object
       required:
@@ -1087,6 +1595,9 @@ components:
         - maps_url
         - latitude
         - longitude
+        - opening_hours_display
+        - opening_hours_source
+        - opening_hours
       properties:
         code:
           type: string
@@ -1119,6 +1630,69 @@ components:
           format: double
           nullable: true
           example: -6.21356
+        opening_hours_display:
+          type: string
+          nullable: true
+          description: Human-readable schedule for direct display in the app.
+          example: "Mon-Sat 10:00-20:00; Sun 11:00-19:00"
+        opening_hours_source:
+          type: string
+          nullable: true
+          enum: [website, default, manual]
+          description: |
+            Source of the stored schedule. `default` means no store-specific
+            opening hours were found and the default schedule is used.
+        opening_hours:
+          $ref: '#/components/schemas/StoreOpeningHours'
+
+    StoreOpeningHours:
+      type: object
+      required:
+        - timezone
+        - weekly
+      properties:
+        timezone:
+          type: string
+          nullable: true
+          description: IANA timezone derived from store country.
+          example: Europe/Dublin
+        weekly:
+          type: object
+          required:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+          properties:
+            mon:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            tue:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            wed:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            thu:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            fri:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            sat:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+            sun:
+              $ref: '#/components/schemas/StoreOpeningIntervals'
+
+    StoreOpeningIntervals:
+      type: array
+      description: Zero or more opening intervals for one weekday.
+      items:
+        type: array
+        minItems: 2
+        maxItems: 2
+        items:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+        example: ["10:00", "20:00"]
 
     OtpRequestResponse:
       type: object

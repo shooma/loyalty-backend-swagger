@@ -207,7 +207,11 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
 | POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
-| GET | `/api/v1/mobile/stores` | Stores for current country, both brands (map: lat/lng + maps_url) |
+| GET | `/api/v1/mobile/offers/campaigns` | Visible offer campaigns for current country |
+| GET | `/api/v1/mobile/offers` | Paginated offers + banners (filters: `campaign_id`, `limit`, `offset`) |
+| GET | `/api/v1/mobile/offers/{id}` | Visible offer detail (404 if expired/cross-country) |
+| GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
+| GET | `/api/v1/mobile/stores` | Stores for current country, both brands (map + opening hours) |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |
 | POST | `/api/v1/mobile/auth/logout` | Revoke this device's session |
 | POST | `/api/v1/mobile/auth/sessions/revoke-all` | Revoke all sessions |
@@ -237,6 +241,8 @@ TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
 # 4. authenticated call
 curl -s $BASE/api/v1/mobile/me -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/me/card -H "Authorization: Bearer $TOKEN" | jq
+curl -s $BASE/api/v1/mobile/stores -H "Authorization: Bearer $TOKEN" | jq
+curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 ---
@@ -308,3 +314,132 @@ Seeded spend-threshold rules: **€5 off €25** (anonymous, 14d), **€5 off �
 (registered, 365d), **€10 off €50** (registered, 365d). A single receipt can
 yield multiple vouchers. Verification gates spending/redeeming of non-welcome
 vouchers; the welcome voucher is usable even before full verification.
+
+---
+
+## 9. Offers
+
+Promotional offers are country-scoped to the member's `current_country`. The
+backend also returns country-less campaigns/banners that are intended for both
+IE and NI. Expired, unpublished, inactive, or cross-country records are not
+served.
+
+### Campaigns
+
+`GET /offers/campaigns` returns cards for the Home carousel and listing selector:
+
+```bash
+curl -s "$BASE/api/v1/mobile/offers/campaigns" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+Each campaign includes:
+
+- `id`, `title`, `description`, `country` (`null` = both countries)
+- `image_url` — mobile-relative media URL, e.g. `/offers/media/campaign-image/101`
+- `leaflet_url` — optional campaign PDF leaflet
+- `valid_from`, `valid_until`
+- `offer_count`
+
+### Offers listing
+
+`GET /offers` returns paginated offers plus active standalone banners:
+
+```bash
+curl -s "$BASE/api/v1/mobile/offers?limit=12&offset=0" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+Query params:
+
+- `campaign_id` — optional campaign id filter for offers.
+- `limit` — page size, default `12`, capped at `100`.
+- `offset` — pagination offset, default `0`.
+
+Response fields:
+
+- `offers` — sorted by campaign, priority DESC, title ASC.
+- `banners` — standalone listing banners, each with image and optional leaflet.
+- `total` — unpaginated count of matching offers.
+- `limit`, `offset` — effective pagination values.
+
+Offer DTO highlights:
+
+- `has_price=true` → `price` object is present (`text_1`, `value_1`, `text_2`,
+  `value_2`, `unit`). Values are strings because they are display copy.
+- `has_price=false` → `price=null`; app should show the “Find the price in the
+  store” fallback.
+- `promotion_type` is optional and contains `code`, `name`, `badge_url`.
+
+### Offer detail
+
+`GET /offers/{id}` returns one visible offer. It returns `404 NOT_FOUND` if the
+offer is unknown, expired, unpublished, or not visible for the member's current
+country.
+
+### Offer media
+
+`GET /offers/media/{kind}/{id}` is public (no Bearer token) so native image/PDF
+loaders can fetch promotional assets directly. It only serves visible/active
+records and returns 404 otherwise.
+
+Supported `kind` values:
+
+- `campaign-image`
+- `campaign-leaflet`
+- `offer-image`
+- `banner-image`
+- `banner-leaflet`
+- `promotion-badge`
+
+The URLs returned by the API are **mobile-relative** (`/offers/media/...`). Prefix
+them with the same API base you use for JSON calls, e.g.
+`https://stage.odoo-stage.polonez.dev/api/v1/mobile`.
+
+---
+
+## 10. Stores and opening hours
+
+`GET /stores` returns active shops for the member's `current_country`, both
+Polonez and Eastore, ordered by name.
+
+```bash
+curl -s "$BASE/api/v1/mobile/stores" -H "Authorization: Bearer $TOKEN" | jq
+```
+
+Store DTO fields:
+
+- identity/map: `code`, `name`, `format`, `country`, `address`, `maps_url`,
+  `latitude`, `longitude`.
+- `opening_hours_display` — human-readable text for display.
+- `opening_hours_source` — `website`, `manual`, or `default`.
+- `opening_hours.timezone` — derived from country (`ie` → `Europe/Dublin`,
+  `ni` → `Europe/London`); it is not edited independently in the back end.
+- `opening_hours.weekly` — structured schedule keyed by `mon` … `sun`, each day
+  containing zero or more `["HH:MM", "HH:MM"]` intervals.
+
+Example:
+
+```json
+{
+  "code": "FONTH",
+  "name": "Fonthill",
+  "opening_hours_display": "Mon-Wed 09:00-20:00; Thu-Sat 09:00-21:00; Sun 10:00-20:00",
+  "opening_hours_source": "website",
+  "opening_hours": {
+    "timezone": "Europe/Dublin",
+    "weekly": {
+      "mon": [["09:00", "20:00"]],
+      "tue": [["09:00", "20:00"]],
+      "wed": [["09:00", "20:00"]],
+      "thu": [["09:00", "21:00"]],
+      "fri": [["09:00", "21:00"]],
+      "sat": [["09:00", "21:00"]],
+      "sun": [["10:00", "20:00"]]
+    }
+  }
+}
+```
+
+For shops where no store-specific source was found, the backend currently uses
+`opening_hours_source=default` with `Mon-Sat 10:00-20:00; Sun 11:00-19:00`.
