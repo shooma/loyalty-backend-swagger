@@ -164,6 +164,11 @@ paths:
         Generates a 6-digit OTP for the phone number and dispatches it through
         the configured delivery provider. Phone is normalized to E.164 using
         `country` (`ie` => `+353`, `ni` => `+44`).
+
+        On staging, the following test phones use fixed OTP `000000` and do not
+        send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
+        `+442800000000` (`country=ni`, `phone=2800000000`),
+        `+353870000000` (`country=ie`, `phone=870000000`).
       operationId: mobileRequestOtp
       requestBody:
         required: true
@@ -215,6 +220,9 @@ paths:
         If the phone is unknown, the response is `status=signup_required` with
         a short-lived `signup_token`. The app must then call
         `/auth/signup/complete`.
+
+        On staging, use code `000000` for these fixed-OTP test phones:
+        `+353871234561`, `+442800000000`, `+353870000000`.
       operationId: mobileVerifyOtp
       requestBody:
         required: true

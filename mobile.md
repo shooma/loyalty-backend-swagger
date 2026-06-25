@@ -107,18 +107,19 @@ with `GET /auth/sessions`, `POST /auth/logout` (this device),
 
 Staging does **not** send real SMS by default. There are two ways to read the code:
 
-### Option A — fixed test phone (recommended, self-service)
+### Option A — fixed test phones (recommended, self-service)
 
-A **test phone** is configured on staging. When you request an OTP for that exact
-phone, the code is **fixed** and no SMS is attempted:
+**Test phones** are configured on staging. When you request an OTP for any of
+these exact phones, the code is **fixed** and no SMS is attempted:
 
-| System parameter | Value |
-|---|---|
-| `polonez_loyalty_mobile_api.otp_test_phone` | `+353871234561` |
-| `polonez_loyalty_mobile_api.otp_test_code` | `000000` |
+| E.164 phone | `country` | `phone` field | OTP |
+|---|---|---|---|
+| `+353871234561` | `ie` | `871234561` | `000000` |
+| `+442800000000` | `ni` | `2800000000` | `000000` |
+| `+353870000000` | `ie` | `870000000` | `000000` |
 
-So you can log in deterministically as **John Smith** (a general demo member
-dedicated to mobile testing):
+So you can log in deterministically, for example as **John Smith** (a general
+demo member dedicated to mobile testing):
 
 ```
 request:  { "country": "ie", "phone": "871234561" }
@@ -134,8 +135,8 @@ verify:   { "country": "ie", "phone": "871234561", "code": "000000", "device_id"
 
 ### Option B — Mailtrap inbox (for any other phone)
 
-For any phone other than the test phone, staging delivers the OTP into a
-**Mailtrap** catch-all inbox (the OTP is emailed to a synthetic
+For any phone other than the configured test phones, staging delivers the OTP
+into a **Mailtrap** catch-all inbox (the OTP is emailed to a synthetic
 `<phone-digits>@polonez.dev` address). This lets you exercise the **signup** flow
 with fresh, never-seen numbers and still read the code. Ask the backend team for
 access to the staging Mailtrap inbox.
@@ -227,7 +228,7 @@ BASE=https://stage.odoo-stage.polonez.dev
 # 1. public config (no auth)
 curl -s $BASE/api/v1/mobile/config | jq
 
-# 2. request OTP for the test phone (no SMS, fixed code 000000)
+# 2. request OTP for a test phone (no SMS, fixed code 000000)
 curl -s -X POST $BASE/api/v1/mobile/auth/otp/request \
   -H 'Content-Type: application/json' \
   -d '{"country":"ie","phone":"871234561"}' | jq
