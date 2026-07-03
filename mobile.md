@@ -212,7 +212,8 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/offers` | Paginated offers + banners (filters: `campaign_id`, `limit`, `offset`) |
 | GET | `/api/v1/mobile/offers/{id}` | Visible offer detail (404 if expired/cross-country) |
 | GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
-| GET | `/api/v1/mobile/stores` | Stores for current country, both brands (map + opening hours) |
+| GET | `/api/v1/mobile/stores` | Stores for current country, with format/facility/favourite filters |
+| POST/PUT/DELETE | `/api/v1/mobile/stores/{code}/favorite` | Add/remove a favourite store |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |
 | POST | `/api/v1/mobile/auth/logout` | Revoke this device's session |
 | POST | `/api/v1/mobile/auth/sessions/revoke-all` | Revoke all sessions |
@@ -243,6 +244,10 @@ TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
 curl -s $BASE/api/v1/mobile/me -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/me/card -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/stores -H "Authorization: Bearer $TOKEN" | jq
+curl -s "$BASE/api/v1/mobile/stores?format=eastore&has_butchers=true" \
+  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -X POST $BASE/api/v1/mobile/stores/ARTAN/favorite \
+  -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 ```
 
@@ -408,10 +413,36 @@ Polonez and Eastore, ordered by name.
 curl -s "$BASE/api/v1/mobile/stores" -H "Authorization: Bearer $TOKEN" | jq
 ```
 
+Query filters:
+
+- `format=all|polonez|eastore` — single-select brand filter. Omitted or `all`
+  returns both brands.
+- `favorite=true` — only member favourites. `favourite=true` is also accepted.
+- `has_off_licence=true` — only shops with off licence.
+- `has_freshly_baked=true` — only shops with freshly baked products.
+- `has_butchers=true` — only shops with butchers/fresh meat.
+
+Boolean filters are app toggles: `true`, `1`, `yes`, `on` enable the filter;
+`false`, `0`, `no`, `off`, empty, or omitted mean no filter. Enabled filters are
+combined with AND.
+
+Examples:
+
+```bash
+curl -s "$BASE/api/v1/mobile/stores?format=eastore" \
+  -H "Authorization: Bearer $TOKEN" | jq
+curl -s "$BASE/api/v1/mobile/stores?has_off_licence=true&has_freshly_baked=true" \
+  -H "Authorization: Bearer $TOKEN" | jq
+curl -s "$BASE/api/v1/mobile/stores?favorite=true" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
 Store DTO fields:
 
 - identity/map: `code`, `name`, `format`, `country`, `address`, `maps_url`,
   `latitude`, `longitude`.
+- facilities/favourite: `has_off_licence`, `has_freshly_baked`, `has_butchers`,
+  `is_favorite`.
 - `opening_hours_display` — human-readable text for display.
 - `opening_hours_source` — `website`, `manual`, or `default`.
 - `opening_hours.timezone` — derived from country (`ie` → `Europe/Dublin`,
@@ -425,6 +456,10 @@ Example:
 {
   "code": "FONTH",
   "name": "Fonthill",
+  "has_off_licence": true,
+  "has_freshly_baked": true,
+  "has_butchers": false,
+  "is_favorite": false,
   "opening_hours_display": "Mon-Wed 09:00-20:00; Thu-Sat 09:00-21:00; Sun 10:00-20:00",
   "opening_hours_source": "website",
   "opening_hours": {
@@ -441,6 +476,28 @@ Example:
   }
 }
 ```
+
+Favourite stores:
+
+```bash
+# add to favourites (idempotent; empty body means true)
+curl -s -X POST "$BASE/api/v1/mobile/stores/FONTH/favorite" \
+  -H "Authorization: Bearer $TOKEN" | jq
+
+# explicitly set state; PUT has the same semantics
+curl -s -X POST "$BASE/api/v1/mobile/stores/FONTH/favorite" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"favorite":false}' | jq
+
+# remove from favourites
+curl -s -X DELETE "$BASE/api/v1/mobile/stores/FONTH/favorite" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+The favourite endpoint returns `{"store": ...}` with the same Store DTO and the
+updated `is_favorite` value. It is scoped to the member's current country, so a
+store from the other country returns `404 NOT_FOUND`.
 
 For shops where no store-specific source was found, the backend currently uses
 `opening_hours_source=default` with `Mon-Sat 10:00-20:00; Sun 11:00-19:00`.
