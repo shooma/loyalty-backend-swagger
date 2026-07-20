@@ -2072,6 +2072,7 @@ components:
         - is_phone_verified
         - is_email_verified
         - is_profile_complete
+        - staff_discount
         - permissions
       properties:
         partner_id:
@@ -2121,8 +2122,31 @@ components:
           type: boolean
         is_profile_complete:
           type: boolean
+        staff_discount:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/StaffDiscount'
+          description: >-
+            Read-only Staff Discount block shown in Account details (SO20-2476).
+            An object with the discount percent for members who currently hold
+            the staff role; `null` for regular customers, which hides the block
+            entirely. The value cannot be entered or edited by the user — it is
+            not accepted by PATCH /me. Removing the staff role turns this back to
+            `null` on the next fetch.
         permissions:
           $ref: '#/components/schemas/ProfilePermissions'
+
+    StaffDiscount:
+      type: object
+      required:
+        - percent
+      properties:
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Current staff discount rate applied at the till, in percent.
+          example: 10
 
     ProfilePermissions:
       type: object
