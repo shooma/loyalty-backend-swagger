@@ -197,7 +197,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 ### Authenticated (`Authorization: Bearer est_...`)
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/mobile/me` | Profile (incl. `current_country`) |
+| GET | `/api/v1/mobile/me` | Profile (incl. `current_country`, read-only `staff_discount` block for staff) |
 | PATCH | `/api/v1/mobile/me` | Update profile (phone change rejected) |
 | PUT | `/api/v1/mobile/me/country` | Switch operating country IE/NI (points/vouchers not transferred) |
 | POST | `/api/v1/mobile/me/delete` | Soft-delete account |
