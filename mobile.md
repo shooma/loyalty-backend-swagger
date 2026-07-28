@@ -203,7 +203,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | POST | `/api/v1/mobile/me/delete` | Soft-delete account |
 | POST | `/api/v1/mobile/me/email/request` | Request email verification code |
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
-| GET | `/api/v1/mobile/me/card` | Digital card + points + currency + daily QR batch (current country) |
+| GET | `/api/v1/mobile/me/card` | Digital card + points, conversion progress/date, currency + daily QR batch (current country) |
 | GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions (current country) |
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
@@ -250,6 +250,15 @@ curl -s -X POST $BASE/api/v1/mobile/stores/ARTAN/favorite \
   -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 ```
+
+### Point conversion progress
+
+`GET /me/card` includes `points_conversion` when active point-voucher denominations
+are configured. It exposes the smallest active denomination, the points still needed
+to reach it, and `next_conversion_date` (`null` when no future date is planned).
+Conversion dates are global for IE and NI; only the balance/progress and currency
+use the member's current country. Voucher conversion is manually started by an
+administrator — the date does not trigger a job.
 
 ---
 
