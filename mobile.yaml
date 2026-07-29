@@ -2283,8 +2283,9 @@ components:
           allOf:
             - $ref: '#/components/schemas/PointsConversion'
           description: >-
-            Progress toward the smallest active point-voucher denomination and
-            the next globally planned manual conversion date. Null when point
+            Progress toward the smallest active point voucher, including its
+            money value, and the next globally planned manual conversion date.
+            Null when point
             voucher denominations are not configured.
         qr_tokens:
           type: array
@@ -2296,19 +2297,37 @@ components:
       required:
         - minimum_points
         - points_remaining
+        - point_value_cents
+        - points_balance_value_cents
+        - voucher_value_cents
         - next_conversion_date
         - currency
       properties:
         minimum_points:
           type: integer
           minimum: 1
-          description: Smallest active point-voucher denomination.
+          description: Points required for the smallest active point voucher.
           example: 400
         points_remaining:
           type: integer
           minimum: 0
           description: Points still needed to reach the smallest denomination.
           example: 150
+        point_value_cents:
+          type: integer
+          minimum: 1
+          description: Value of one point in minor currency units (cents/pence).
+          example: 1
+        points_balance_value_cents:
+          type: integer
+          minimum: 0
+          description: Current points balance expressed in minor currency units.
+          example: 250
+        voucher_value_cents:
+          type: integer
+          minimum: 1
+          description: Money value of the smallest available point voucher in minor currency units.
+          example: 400
         next_conversion_date:
           type: string
           format: date

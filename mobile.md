@@ -255,10 +255,13 @@ curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 
 `GET /me/card` includes `points_conversion` when active point-voucher denominations
 are configured. It exposes the smallest active denomination, the points still needed
-to reach it, and `next_conversion_date` (`null` when no future date is planned).
-Conversion dates are global for IE and NI; only the balance/progress and currency
-use the member's current country. Voucher conversion is manually started by an
-administrator — the date does not trigger a job.
+to reach it, its `voucher_value_cents`, the current balance value in
+`points_balance_value_cents`, and `next_conversion_date` (`null` when no future
+date is planned). `point_value_cents` is the configured value of one point, so the
+app never needs to hardcode a points-to-money conversion rate. Conversion dates are
+global for IE and NI; only the balance/progress and currency use the member's current
+country. Voucher conversion is manually started by an administrator — the date does
+not trigger a job.
 
 ---
 
