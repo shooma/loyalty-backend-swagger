@@ -162,8 +162,14 @@ paths:
       summary: Request phone OTP
       description: |
         Generates a 6-digit OTP for the phone number and dispatches it through
-        the configured delivery provider. Phone is normalized to E.164 using
-        `country` (`ie` => `+353`, `ni` => `+44`).
+        the configured delivery provider. Phone is normalized and validated as
+        E.164 using `country` (`ie` => `+353`, `ni` => `+44`).
+
+        Production sends the Odoo-generated code through Twilio Programmable
+        Messaging SMS; Odoo remains responsible for expiry, five-attempt
+        lockout, and code verification. Twilio Verify is not used. A successful
+        response means Twilio accepted the SMS (normally as `queued`), not that
+        final handset delivery has already occurred.
 
         On staging, the following test phones use fixed OTP `000000` and do not
         send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
@@ -212,7 +218,8 @@ paths:
         - Mobile - Auth
       summary: Verify phone OTP
       description: |
-        Verifies the 6-digit OTP.
+        Verifies the 6-digit OTP locally in Odoo. Each issued code allows a
+        maximum of five failed submissions before it locks.
 
         If the phone already belongs to a loyalty profile, the response is
         `status=authenticated` with a mobile Bearer session token.

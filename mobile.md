@@ -60,6 +60,10 @@ Content-Type: application/json
 - Response: `{ "expires_in": 300, "retry_after": 60 }`.
 - OTP lifetime: **5 minutes**. Throttling: **1 request / minute** and **5 / hour**
   per phone (plus per-IP caps). Expect `429` if you hammer it.
+- Production sends the Odoo-generated code through Twilio Programmable
+  Messaging SMS. Odoo still verifies the code; Twilio Verify is not used.
+- A successful request means Twilio accepted the SMS for delivery (normally
+  `queued`), not that the handset has already received it.
 
 ### 2.2 Verify OTP
 
