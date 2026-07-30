@@ -207,6 +207,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | POST | `/api/v1/mobile/me/delete` | Soft-delete account |
 | POST | `/api/v1/mobile/me/email/request` | Request email verification code |
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
+| GET/PATCH | `/api/v1/mobile/me/preferences/{application}` | Read/update Eastore or Polonez communication preferences |
 | GET | `/api/v1/mobile/me/card` | Digital card + points, conversion progress/date, currency + daily QR batch (current country) |
 | GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions (current country) |
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
@@ -246,6 +247,10 @@ TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
 
 # 4. authenticated call
 curl -s $BASE/api/v1/mobile/me -H "Authorization: Bearer $TOKEN" | jq
+curl -s $BASE/api/v1/mobile/me/preferences/eastore -H "Authorization: Bearer $TOKEN" | jq
+curl -s -X PATCH $BASE/api/v1/mobile/me/preferences/eastore \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"push_notifications":false,"email_newsletter":true}' | jq
 curl -s $BASE/api/v1/mobile/me/card -H "Authorization: Bearer $TOKEN" | jq
 curl -s $BASE/api/v1/mobile/stores -H "Authorization: Bearer $TOKEN" | jq
 curl -s "$BASE/api/v1/mobile/stores?format=eastore&has_butchers=true" \
@@ -269,7 +274,45 @@ not trigger a job.
 
 ---
 
-## 7. Common errors
+## 7. Communication preferences
+
+Preferences are scoped to the authenticated account and the application path
+value (`eastore` or `polonez`). They are shared by all devices, unchanged when
+the member switches between IE and NI, and independent between the two apps.
+
+For users without a stored row, `GET /me/preferences/{application}` creates and
+returns these defaults:
+
+```json
+{
+  "application": "eastore",
+  "push_notifications": true,
+  "email_newsletter": false,
+  "receive_sms": false,
+  "is_profile_verified": false
+}
+```
+
+`PATCH` accepts one or more boolean fields and returns the same complete shape.
+Unknown fields, non-booleans, and an empty body are rejected with `400`.
+Enabling `email_newsletter` or `receive_sms` for an unverified profile returns
+`409 PROFILE_NOT_VERIFIED` with the blocked fields in `error.details.fields`;
+disabling either field is always allowed.
+
+`push_notifications` is the account-level preference. The mobile app must still
+request/check the current device's OS notification permission, and the sender
+must require both this preference and valid permission/token for the target
+device. A system denial on one device must never overwrite the account value or
+another device's permission.
+
+Every effective change is audited server-side with old/new values, app, member,
+time, current IE/NI region, session device/platform, and source. Email/SMS
+senders must call the backend send-time gate immediately before delivery, which
+re-checks both profile verification and the latest preference.
+
+---
+
+## 8. Common errors
 
 | Code | Meaning |
 |---|---|
@@ -284,7 +327,7 @@ Errors carry a machine-readable code (e.g. `INVALID_COUNTRY`, `INVALID_PLATFORM`
 
 ---
 
-## 8. Vouchers
+## 9. Vouchers
 
 The app surfaces vouchers; **redemption happens at the till** (Cash Register
 API), not in the app. Money fields are in cents.
@@ -339,7 +382,7 @@ vouchers; the welcome voucher is usable even before full verification.
 
 ---
 
-## 9. Offers
+## 10. Offers
 
 Promotional offers are country-scoped to the member's `current_country`. The
 backend also returns country-less campaigns/banners that are intended for both
@@ -420,7 +463,7 @@ them with the same API base you use for JSON calls, e.g.
 
 ---
 
-## 10. Stores and opening hours
+## 11. Stores and opening hours
 
 `GET /stores` returns active shops for the member's `current_country`, both
 Polonez and Eastore, ordered by name.

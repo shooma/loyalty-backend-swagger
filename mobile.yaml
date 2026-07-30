@@ -435,6 +435,95 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/me/preferences/{application}:
+    parameters:
+      - name: application
+        in: path
+        required: true
+        description: Mobile app whose account preferences are being managed.
+        schema:
+          $ref: '#/components/schemas/MobileApplication'
+    get:
+      tags:
+        - Mobile - Profile
+      summary: Get communication preferences
+      description: |
+        Returns account-level communication preferences for the selected app.
+        Existing users without a stored row receive and persist the defaults:
+        push enabled, email newsletter and SMS disabled. Values are shared
+        between all devices and are independent for Eastore and Polonez.
+
+        `push_notifications` is the account preference only. The app and push
+        delivery service must separately check the target device's OS permission.
+      operationId: mobileGetPreferences
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Current communication preferences.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Mobile - Profile
+      summary: Update communication preferences
+      description: |
+        Atomically updates one or more booleans and returns the complete current
+        state. Every effective field change is audited with the profile, app,
+        old/new values, timestamp, current region, session device/platform, and
+        API source. No-op values do not create audit rows.
+
+        Enabling `email_newsletter` or `receive_sms` requires a fully verified
+        profile. Disabling either channel remains allowed after verification is
+        lost. Email/SMS senders re-check both verification and the latest value
+        immediately before delivery.
+      operationId: mobilePatchPreferences
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesPatchRequest'
+            example:
+              push_notifications: false
+              email_newsletter: true
+      responses:
+        '200':
+          description: Updated communication preferences.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Profile is not verified, so marketing email/SMS cannot be enabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: PROFILE_NOT_VERIFIED
+                  message: A verified profile is required to enable email newsletter or SMS
+                  details:
+                    fields: [email_newsletter]
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/mobile/me/country:
     put:
       tags:
@@ -2218,6 +2307,49 @@ components:
             - female
             - non_binary
             - prefer_not_to_say
+
+    MobileApplication:
+      type: string
+      enum:
+        - eastore
+        - polonez
+
+    PreferencesResponse:
+      type: object
+      required:
+        - application
+        - push_notifications
+        - email_newsletter
+        - receive_sms
+        - is_profile_verified
+      properties:
+        application:
+          $ref: '#/components/schemas/MobileApplication'
+        push_notifications:
+          type: boolean
+          description: Account preference; target-device OS permission is checked separately.
+          default: true
+        email_newsletter:
+          type: boolean
+          default: false
+        receive_sms:
+          type: boolean
+          default: false
+        is_profile_verified:
+          type: boolean
+          description: False means email newsletter and SMS cannot be enabled.
+
+    PreferencesPatchRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        push_notifications:
+          type: boolean
+        email_newsletter:
+          type: boolean
+        receive_sms:
+          type: boolean
 
     DeleteProfileResponse:
       type: object
