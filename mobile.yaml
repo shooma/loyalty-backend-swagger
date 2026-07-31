@@ -2423,14 +2423,12 @@ components:
         currency:
           $ref: '#/components/schemas/Currency'
         points_conversion:
-          nullable: true
           allOf:
             - $ref: '#/components/schemas/PointsConversion'
           description: >-
-            Progress toward the smallest active point voucher, including its
-            money value, and the next globally planned manual conversion date.
-            Null when point
-            voucher denominations are not configured.
+            Progress toward the next automatic point conversion: the minimum
+            balance required, points still missing, the balance value in money,
+            and the next globally planned conversion date.
         qr_tokens:
           type: array
           items:
@@ -2441,45 +2439,38 @@ components:
       required:
         - minimum_points
         - points_remaining
-        - point_value_cents
         - points_balance_value_cents
-        - voucher_value_cents
         - next_conversion_date
         - currency
       properties:
         minimum_points:
           type: integer
           minimum: 1
-          description: Points required for the smallest active point voucher.
+          description: >-
+            Minimum wallet balance required before any conversion runs
+            (fixed at 400 points = EUR 4).
           example: 400
         points_remaining:
           type: integer
           minimum: 0
-          description: Points still needed to reach the smallest denomination.
+          description: Points still needed to reach the conversion minimum.
           example: 150
-        point_value_cents:
-          type: integer
-          minimum: 1
-          description: Value of one point in minor currency units (cents/pence).
-          example: 1
         points_balance_value_cents:
           type: integer
           minimum: 0
-          description: Current points balance expressed in minor currency units.
+          description: >-
+            Current points balance expressed in minor currency units
+            (100 points = EUR 1, so one point equals one cent/penny).
           example: 250
-        voucher_value_cents:
-          type: integer
-          minimum: 1
-          description: Money value of the smallest available point voucher in minor currency units.
-          example: 400
         next_conversion_date:
           type: string
           format: date
           nullable: true
           description: >-
             Closest active planned conversion date that is today or later. The
-            date is global and identical for IE and NI; conversion remains a
-            manual back-office operation.
+            date is global and identical for IE and NI. Conversion runs
+            automatically at 00:00 on that date; null when no future date is
+            planned.
           example: "2026-08-01"
         currency:
           $ref: '#/components/schemas/Currency'

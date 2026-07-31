@@ -262,15 +262,15 @@ curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 
 ### Point conversion progress
 
-`GET /me/card` includes `points_conversion` when active point-voucher denominations
-are configured. It exposes the smallest active denomination, the points still needed
-to reach it, its `voucher_value_cents`, the current balance value in
-`points_balance_value_cents`, and `next_conversion_date` (`null` when no future
-date is planned). `point_value_cents` is the configured value of one point, so the
-app never needs to hardcode a points-to-money conversion rate. Conversion dates are
-global for IE and NI; only the balance/progress and currency use the member's current
-country. Voucher conversion is manually started by an administrator — the date does
-not trigger a job.
+`GET /me/card` always includes `points_conversion`. Conversion rules are fixed:
+100 points = EUR 1, a minimum of 400 points (EUR 4) is required, vouchers are issued
+in EUR 10 steps with the sub-euro remainder kept on the balance, and converted
+vouchers stay valid for one year. The block exposes `minimum_points` (400), the
+`points_remaining` to reach it, the current balance value in
+`points_balance_value_cents` (one point = one cent/penny), and `next_conversion_date`
+(`null` when no future date is planned). Conversion dates are global for IE and NI;
+only the balance/progress and currency use the member's current country. Conversion
+runs automatically at 00:00 on each planned date.
 
 ---
 
