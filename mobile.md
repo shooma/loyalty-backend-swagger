@@ -306,9 +306,13 @@ device. A system denial on one device must never overwrite the account value or
 another device's permission.
 
 Every effective change is audited server-side with old/new values, app, member,
-time, current IE/NI region, session device/platform, and source. Email/SMS
-senders must call the backend send-time gate immediately before delivery, which
-re-checks both profile verification and the latest preference.
+time, current IE/NI region, session device/platform, and source. Marketing
+senders must call `loyalty.mobile.preference.communication_allowed()` immediately
+before delivery; it re-checks both profile verification and the latest value.
+This addon does not currently contain a marketing delivery service. Transactional
+OTP and email-verification messages intentionally bypass marketing preferences.
+At account anonymisation (180 days after deletion), current preferences are
+removed and device identifiers are erased from the retained consent history.
 
 ---
 

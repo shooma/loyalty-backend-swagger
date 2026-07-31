@@ -483,8 +483,13 @@ paths:
 
         Enabling `email_newsletter` or `receive_sms` requires a fully verified
         profile. Disabling either channel remains allowed after verification is
-        lost. Email/SMS senders re-check both verification and the latest value
-        immediately before delivery.
+        lost. Marketing senders must call the Odoo-side
+        `loyalty.mobile.preference.communication_allowed()` gate immediately
+        before delivery to re-check verification and the latest value. This addon
+        does not currently implement marketing delivery; transactional OTP and
+        email-verification messages intentionally bypass these preferences. At
+        account anonymisation, current preferences are removed and device IDs are
+        erased from retained consent history.
       operationId: mobilePatchPreferences
       security:
         - MobileBearerAuth: []
