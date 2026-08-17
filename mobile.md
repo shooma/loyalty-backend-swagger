@@ -60,10 +60,6 @@ Content-Type: application/json
 - Response: `{ "expires_in": 300, "retry_after": 60 }`.
 - OTP lifetime: **5 minutes**. Throttling: **1 request / minute** and **5 / hour**
   per phone (plus per-IP caps). Expect `429` if you hammer it.
-- Production sends the Odoo-generated code through Twilio Programmable
-  Messaging SMS. Odoo still verifies the code; Twilio Verify is not used.
-- A successful request means Twilio accepted the SMS for delivery (normally
-  `queued`), not that the handset has already received it.
 
 ### 2.2 Verify OTP
 
@@ -209,7 +205,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
 | GET/PATCH | `/api/v1/mobile/me/preferences/{application}` | Read/update Eastore or Polonez communication preferences |
 | GET | `/api/v1/mobile/me/card` | Digital card + points, conversion progress/date, currency + daily QR batch (current country) |
-| GET | `/api/v1/mobile/me/points-history` | Last 50 point-earning transactions (current country) |
+| GET | `/api/v1/mobile/me/points-history` | Wallet history, cursor-paginated (filters: `limit`, `cursor`); current country, 2 years back |
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
 | POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
@@ -271,6 +267,37 @@ vouchers stay valid for one year. The block exposes `minimum_points` (400), the
 (`null` when no future date is planned). Conversion dates are global for IE and NI;
 only the balance/progress and currency use the member's current country. Conversion
 runs automatically at 00:00 on each planned date.
+
+### Points history
+
+`GET /me/points-history` returns the member's wallet history for the current
+country, newest first, two years back. Because wallets are isolated per country,
+switching IE/NI switches the whole history with it.
+
+One row per event, and everything about a visit stays inside that row. A purchase
+carries its points, the vouchers spent on it (`vouchers_used`) and the vouchers it
+handed out (`vouchers_earned`) — there are no extra zero-point rows to stitch
+together. Rows with `points: 0` are genuine: a basket too small to earn anything
+is still a visit worth showing. `type` is `purchase`, `conversion` (Head Office
+turning points into vouchers — always negative points, dated the day HO scheduled)
+or `adjustment` (a manual back-office correction, which may have no store).
+
+`occurred_at` is UTC and comes from the till receipt, not from when the finalize
+call reached Odoo — a till replaying a queued receipt keeps its real time. A
+conversion reports the date Head Office scheduled: a run delayed by downtime
+still shows the planned date, and several missed dates collapse into one entry
+dated by the latest of them. An immediate conversion triggered by an
+administrator has no scheduled date and reports the day it ran.
+
+Paging uses an opaque `cursor`, not an offset: new rows land at the top while the
+member scrolls, and an offset would repeat or skip rows across pages. Pass the
+previous response's `next_cursor` to load more; omit it for the newest page, which
+is what pull-to-refresh does. A malformed cursor is a 400 `INVALID_CURSOR` rather
+than a silent restart from the top. `limit` defaults to 20 and is clamped to 100.
+
+`eligible_amount_cents` currently equals `amount_cents` — points are still earned
+on the whole basket. The alcohol/tobacco exclusion is separate work; the field
+exists now so adding it needs no contract change.
 
 ---
 

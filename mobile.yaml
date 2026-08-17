@@ -162,14 +162,8 @@ paths:
       summary: Request phone OTP
       description: |
         Generates a 6-digit OTP for the phone number and dispatches it through
-        the configured delivery provider. Phone is normalized and validated as
-        E.164 using `country` (`ie` => `+353`, `ni` => `+44`).
-
-        Production sends the Odoo-generated code through Twilio Programmable
-        Messaging SMS; Odoo remains responsible for expiry, five-attempt
-        lockout, and code verification. Twilio Verify is not used. A successful
-        response means Twilio accepted the SMS (normally as `queued`), not that
-        final handset delivery has already occurred.
+        the configured delivery provider. Phone is normalized to E.164 using
+        `country` (`ie` => `+353`, `ni` => `+44`).
 
         On staging, the following test phones use fixed OTP `000000` and do not
         send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
@@ -218,8 +212,7 @@ paths:
         - Mobile - Auth
       summary: Verify phone OTP
       description: |
-        Verifies the 6-digit OTP locally in Odoo. Each issued code allows a
-        maximum of five failed submissions before it locks.
+        Verifies the 6-digit OTP.
 
         If the phone already belongs to a loyalty profile, the response is
         `status=authenticated` with a mobile Bearer session token.
@@ -702,20 +695,55 @@ paths:
     get:
       tags:
         - Mobile - Card
-      summary: Get recent points history
+      summary: Get points history
       description: |
-        Recent point-earning transactions for the member's current country,
-        newest first. Transactions made in the other country are not included.
+        Wallet history for the member's current country, newest first: purchases,
+        point conversions and manual adjustments. Wallets are isolated per
+        country, so events from the other country are never included and
+        switching country switches the whole history.
+
+        One row per event. Everything about a visit stays inside its own row -
+        points earned, vouchers spent, vouchers handed out - rather than being
+        split across extra rows. Rows with `points: 0` are real: a basket too
+        small to earn anything is still a visit.
+
+        Paginated by an opaque cursor rather than an offset, because new rows
+        arrive at the top while the member scrolls and an offset would then
+        repeat or skip rows. Pass the previous response's `next_cursor` to load
+        the next page; omit it to get the newest page (pull-to-refresh).
+
+        History goes back two years.
       operationId: mobileGetPointsHistory
       security:
         - MobileBearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Page size. Out-of-range values are clamped.
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque cursor from the previous response's `next_cursor`. Treat it as
+            a black box - its contents are an implementation detail.
+          example: MjAyNi0wMi0yOCAxMDozMjowMHw5ODI
       responses:
         '200':
-          description: Recent point-earning transactions, newest first.
+          description: One page of wallet history, newest first.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PointsHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -2500,35 +2528,158 @@ components:
     PointsHistoryResponse:
       type: object
       required:
-        - transactions
+        - items
+        - next_cursor
+        - has_more
       properties:
-        transactions:
+        items:
           type: array
           items:
-            $ref: '#/components/schemas/PointsTransaction'
+            $ref: '#/components/schemas/WalletHistoryEntry'
+        next_cursor:
+          type: string
+          nullable: true
+          description: Cursor for the next page; null on the last page.
+        has_more:
+          type: boolean
+          description: Whether another page exists.
 
-    PointsTransaction:
+    WalletHistoryEntry:
       type: object
       required:
         - id
-        - date
-        - store_name
-        - amount_cents
+        - type
+        - occurred_at
         - points
+        - currency
+        - store
+        - amount_cents
+        - eligible_amount_cents
+        - receipt
+        - note
+        - vouchers_used
+        - vouchers_earned
       properties:
         id:
           type: integer
-        date:
+          description: Stable row key. Use this for list identity, not `receipt`.
+          example: 982
+        type:
+          $ref: '#/components/schemas/WalletHistoryEntryType'
+        occurred_at:
           type: string
           format: date-time
           nullable: true
-        store_name:
-          type: string
-          nullable: true
-        amount_cents:
-          type: integer
+          description: |
+            UTC. For a purchase this is the till receipt time, not when the till's
+            call reached the server. For a conversion it is the date Head Office
+            scheduled - a run delayed by downtime still reports the scheduled date,
+            and several missed dates collapse into one entry dated by the latest of
+            them. An immediate conversion triggered by an administrator has no
+            scheduled date and reports the day it ran.
+          example: "2026-02-28T10:32:00Z"
         points:
           type: integer
+          description: |
+            Signed: positive when earned, negative when debited, 0 for a visit
+            that earned nothing.
+          example: 90
+        currency:
+          $ref: '#/components/schemas/Currency'
+        store:
+          allOf:
+            - $ref: '#/components/schemas/WalletHistoryStore'
+          nullable: true
+          description: Null when the event is not tied to a till (conversions, adjustments).
+        amount_cents:
+          type: integer
+          nullable: true
+          description: Basket total in minor units. Null for non-purchase rows.
+          example: 9000
+        eligible_amount_cents:
+          type: integer
+          nullable: true
+          description: |
+            Part of the basket that earned points. Today it always equals
+            `amount_cents` - the alcohol/tobacco exclusion is a separate piece of
+            work, and this field is here so adding it needs no contract change.
+          example: 9000
+        receipt:
+          type: string
+          nullable: true
+          description: Receipt number printed at the till. Null for non-purchase rows.
+          example: "000123"
+        note:
+          type: string
+          nullable: true
+          description: Reason text, present on manual adjustments.
+        vouchers_used:
+          type: array
+          description: Vouchers the member spent on this purchase.
+          items:
+            $ref: '#/components/schemas/WalletHistoryVoucher'
+        vouchers_earned:
+          type: array
+          description: |
+            Vouchers this event handed out - issued at the till for a purchase,
+            or minted by the debit for a conversion.
+          items:
+            $ref: '#/components/schemas/WalletHistoryVoucher'
+
+    WalletHistoryEntryType:
+      type: string
+      enum:
+        - purchase
+        - conversion
+        - adjustment
+      description: |
+        `purchase` - a till visit; `conversion` - Head Office turned points into
+        vouchers (always a debit); `adjustment` - a manual back-office correction.
+
+    WalletHistoryStore:
+      type: object
+      required:
+        - code
+        - name
+        - format
+      properties:
+        code:
+          type: string
+          example: BLANC
+        name:
+          type: string
+          nullable: true
+          description: Null when the till never resolved to a known shop record.
+          example: Blanchardstown
+        format:
+          type: string
+          nullable: true
+          enum:
+            - polonez
+            - eastore
+            - null
+      example:
+        code: BLANC
+        name: Blanchardstown
+        format: eastore
+
+    WalletHistoryVoucher:
+      type: object
+      required:
+        - code
+        - description
+        - discount_cents
+      properties:
+        code:
+          type: string
+          example: PLN-5OFF-4821
+        description:
+          type: string
+          nullable: true
+          example: EUR 5 off EUR 25
+        discount_cents:
+          type: integer
+          example: 500
 
     LogoutResponse:
       type: object
