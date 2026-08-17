@@ -973,10 +973,13 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Page size. Defaults to 12 and is capped at 100.
+          description: >-
+            Page size. Defaults to 12 and is capped at 100. Values below 1 fall
+            back to the default rather than clamping, so a zero cannot be read as
+            "no limit".
           schema:
             type: integer
-            minimum: 0
+            minimum: 1
             maximum: 100
             default: 12
         - name: offset
