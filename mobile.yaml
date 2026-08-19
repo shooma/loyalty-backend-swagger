@@ -734,7 +734,7 @@ paths:
           description: |
             Opaque cursor from the previous response's `next_cursor`. Treat it as
             a black box - its contents are an implementation detail.
-          example: MjAyNi0wMi0yOCAxMDozMjowMHw5ODI
+          example: "982"
       responses:
         '200':
           description: One page of wallet history, newest first.
@@ -2557,7 +2557,6 @@ components:
         - currency
         - store
         - amount_cents
-        - eligible_amount_cents
         - receipt
         - note
         - vouchers_used
@@ -2598,14 +2597,6 @@ components:
           type: integer
           nullable: true
           description: Basket total in minor units. Null for non-purchase rows.
-          example: 9000
-        eligible_amount_cents:
-          type: integer
-          nullable: true
-          description: |
-            Part of the basket that earned points. Today it always equals
-            `amount_cents` - the alcohol/tobacco exclusion is a separate piece of
-            work, and this field is here so adding it needs no contract change.
           example: 9000
         receipt:
           type: string

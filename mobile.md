@@ -295,10 +295,6 @@ previous response's `next_cursor` to load more; omit it for the newest page, whi
 is what pull-to-refresh does. A malformed cursor is a 400 `INVALID_CURSOR` rather
 than a silent restart from the top. `limit` defaults to 20 and is clamped to 100.
 
-`eligible_amount_cents` currently equals `amount_cents` — points are still earned
-on the whole basket. The alcohol/tobacco exclusion is separate work; the field
-exists now so adding it needs no contract change.
-
 ---
 
 ## 7. Communication preferences
