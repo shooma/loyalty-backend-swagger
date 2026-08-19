@@ -270,6 +270,20 @@ runs automatically at 00:00 on each planned date.
 
 ### Points history
 
+> **Breaking change (SO20-3003).** The response shape changed and the endpoint is
+> not versioned, so a client written against the previous one shows an empty
+> screen rather than an error — `transactions` simply is not there any more.
+> What moved:
+>
+> | before | now |
+> |---|---|
+> | `{"transactions": [...]}` | `{"items": [...], "next_cursor": …, "has_more": …}` |
+> | `date` | `occurred_at` |
+> | `store_name` (string) | `store` (object with `code`, `name`, `format`, or `null`) |
+>
+> Everything else on a row is additive. New query params `limit` and `cursor`
+> drive lazy loading; without them you get the newest 20 rows.
+
 `GET /me/points-history` returns the member's wallet history for the current
 country, newest first, two years back. Because wallets are isolated per country,
 switching IE/NI switches the whole history with it.

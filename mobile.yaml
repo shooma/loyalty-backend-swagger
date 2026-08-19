@@ -697,6 +697,12 @@ paths:
         - Mobile - Card
       summary: Get points history
       description: |
+        **Breaking change (SO20-3003):** the response is now
+        `{items, next_cursor, has_more}` - previously `{transactions}` - and within
+        a row `date` became `occurred_at` and the `store_name` string became a
+        `store` object. The endpoint is not versioned, so an older client renders
+        an empty list rather than an error.
+
         Wallet history for the member's current country, newest first: purchases,
         point conversions and manual adjustments. Wallets are isolated per
         country, so events from the other country are never included and
