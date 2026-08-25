@@ -770,6 +770,77 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/me/visits/{entry_id}/feedback:
+    post:
+      tags:
+        - Mobile - Card
+      summary: Rate a store visit
+      description: |
+        Stores the member's rating of one completed visit, taken from a
+        points-history row. `entry_id` is that row's `id`, which the app already
+        holds - no extra lookup is needed.
+
+        A visit can be rated **once**. There is no edit and no delete: the stored
+        rating comes back on the history row itself (`feedback`), and `can_rate`
+        tells the app whether the action is still on offer.
+
+        Eligibility is per visit and carries no time-of-day or campaign rules:
+
+        - the row must be the member's own and of type `purchase`;
+        - the till must have resolved to a Store Locator shop, since the question
+          names the store;
+        - the receipt must be inside the rating window (90 days by default, see
+          `feedback.rating_window_days` in `/config`).
+
+        Form rules, all enforced server-side and mirrored to the app through
+        `/config`:
+
+        - three criteria, each 1-5, **none preselected** and all required;
+        - a comment is mandatory when any criterion is at or below
+          `feedback.low_rating_threshold`, optional otherwise;
+        - a comment, once written, must be at least
+          `feedback.comment_min_chars` characters and at most
+          `feedback.comment_max_chars`.
+
+        The business may contact the member about what they wrote; the app states
+        this before submitting.
+      operationId: mobileSubmitVisitFeedback
+      security:
+        - MobileBearerAuth: []
+      parameters:
+        - in: path
+          name: entry_id
+          required: true
+          schema:
+            type: integer
+          description: Wallet-entry id of the rated visit, from `GET /me/points-history`.
+          example: 982
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitFeedbackRequest'
+      responses:
+        '201':
+          description: The stored rating.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitFeedbackSubmission'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/VisitNotRateable'
+        '404':
+          $ref: '#/components/responses/VisitNotFound'
+        '409':
+          $ref: '#/components/responses/VisitAlreadyRated'
+        '422':
+          $ref: '#/components/responses/VisitFeedbackInvalid'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/mobile/vouchers:
     get:
       tags:
@@ -1504,6 +1575,94 @@ components:
             error:
               code: NOT_FOUND
               message: Store not found
+    VisitNotFound:
+      description: No such visit, or it belongs to another member.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: VISIT_NOT_FOUND
+              message: Visit not found
+    VisitNotRateable:
+      description: |
+        The visit cannot be rated at all. `details.reason` says why:
+
+        - `not_a_purchase` - the row is a conversion, adjustment or opening balance;
+        - `no_store` - the till never resolved to a Store Locator shop;
+        - `outside_window` - the receipt is older than the rating window.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: VISIT_NOT_RATEABLE
+              message: This visit cannot be rated
+              details:
+                reason: outside_window
+    VisitAlreadyRated:
+      description: The visit was already rated. Feedback cannot be edited or resubmitted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: VISIT_ALREADY_RATED
+              message: This visit has already been rated
+    VisitFeedbackInvalid:
+      description: |
+        The submitted form breaks a rule. One problem is reported at a time, with
+        `details.field` naming the input to highlight.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidRating:
+              summary: A criterion is missing or out of range
+              value:
+                status: false
+                error:
+                  code: INVALID_RATING
+                  message: overall must be an integer between 1 and 5
+                  details:
+                    field: overall
+            commentRequired:
+              summary: A low score needs a comment
+              value:
+                status: false
+                error:
+                  code: COMMENT_REQUIRED
+                  message: A comment is required when any rating is low
+                  details:
+                    field: comment
+                    threshold: 3
+            commentTooShort:
+              summary: Comment below the configured minimum
+              value:
+                status: false
+                error:
+                  code: COMMENT_TOO_SHORT
+                  message: A comment must be at least 5 characters
+                  details:
+                    field: comment
+                    min_chars: 5
+            commentTooLong:
+              summary: Comment above 1000 characters
+              value:
+                status: false
+                error:
+                  code: COMMENT_TOO_LONG
+                  message: A comment cannot exceed 1000 characters
+                  details:
+                    field: comment
+                    max_chars: 1000
     LegalDocumentNotFound:
       description: Requested legal document is not published.
       content:
@@ -1584,6 +1743,7 @@ components:
         - legal
         - countries
         - genders
+        - feedback
       properties:
         welcome_voucher:
           nullable: true
@@ -1611,6 +1771,42 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Option'
+        feedback:
+          $ref: '#/components/schemas/FeedbackRules'
+
+    FeedbackRules:
+      type: object
+      description: |
+        Visit-feedback form rules (SO20-3054). Served rather than hardcoded in the
+        app so both sides enforce the same configured values: the minimum comment
+        length and the rating window are `ir.config_parameter` settings and can be
+        changed without a release.
+      required:
+        - comment_min_chars
+        - comment_max_chars
+        - low_rating_threshold
+        - rating_window_days
+      properties:
+        comment_min_chars:
+          type: integer
+          description: Shortest accepted comment. Submit is blocked below it.
+          example: 5
+        comment_max_chars:
+          type: integer
+          description: Longest accepted comment.
+          example: 1000
+        low_rating_threshold:
+          type: integer
+          description: |
+            At or below this score a comment becomes mandatory. The same cut-off
+            marks feedback as low rated in the back office.
+          example: 3
+        rating_window_days:
+          type: integer
+          description: |
+            How long after the receipt a visit stays rateable. Older visits remain
+            in the history without the action.
+          example: 90
 
     WelcomeVoucher:
       type: object
@@ -2610,6 +2806,8 @@ components:
         - note
         - vouchers_used
         - vouchers_earned
+        - can_rate
+        - feedback
       properties:
         id:
           type: integer
@@ -2668,6 +2866,105 @@ components:
             or minted by the debit for a conversion.
           items:
             $ref: '#/components/schemas/WalletHistoryVoucher'
+        can_rate:
+          type: boolean
+          description: |
+            Whether the rating action may be offered for this row (SO20-3054).
+            False for anything that is not a rateable visit, for a visit past the
+            rating window, and for one already rated - in which case `feedback`
+            carries what was given.
+          example: true
+        feedback:
+          allOf:
+            - $ref: '#/components/schemas/VisitFeedback'
+          nullable: true
+          description: The rating already submitted for this visit, or null.
+
+    VisitFeedbackRequest:
+      type: object
+      required:
+        - overall
+        - staff
+        - product
+      properties:
+        overall:
+          $ref: '#/components/schemas/VisitRating'
+        staff:
+          $ref: '#/components/schemas/VisitRating'
+        product:
+          $ref: '#/components/schemas/VisitRating'
+        comment:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: |
+            The member's own words. Mandatory when any criterion is at or below
+            `feedback.low_rating_threshold`, optional otherwise; when present it
+            must satisfy `feedback.comment_min_chars` either way.
+          example: The queue at the deli counter was very slow this morning.
+      example:
+        overall: 4
+        staff: 5
+        product: 3
+        comment: Great staff, but the bread shelf was empty by midday.
+
+    VisitRating:
+      type: integer
+      minimum: 1
+      maximum: 5
+      description: One criterion, 1-5. No default - the app preselects nothing.
+      example: 4
+
+    VisitFeedback:
+      type: object
+      required:
+        - overall
+        - staff
+        - product
+        - comment
+        - submitted_at
+      properties:
+        overall:
+          $ref: '#/components/schemas/VisitRating'
+        staff:
+          $ref: '#/components/schemas/VisitRating'
+        product:
+          $ref: '#/components/schemas/VisitRating'
+        comment:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-08-24T10:32:00Z"
+
+    VisitFeedbackSubmission:
+      allOf:
+        - $ref: '#/components/schemas/VisitFeedback'
+        - type: object
+          required:
+            - id
+            - entry_id
+            - store
+            - message
+          properties:
+            id:
+              type: integer
+              description: Stored feedback id.
+              example: 41
+            entry_id:
+              type: integer
+              description: History row that was rated.
+              example: 982
+            store:
+              allOf:
+                - $ref: '#/components/schemas/WalletHistoryStore'
+              nullable: true
+            message:
+              type: string
+              description: Confirmation to show the member verbatim.
+              example: Thank you for your feedback. We will contact you if needed.
 
     WalletHistoryEntryType:
       type: string

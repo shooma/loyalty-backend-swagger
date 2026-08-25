@@ -223,6 +223,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET/PATCH | `/api/v1/mobile/me/preferences/{application}` | Read/update Eastore or Polonez communication preferences |
 | GET | `/api/v1/mobile/me/card` | Digital card + points, conversion progress/date, currency + daily QR batch (current country) |
 | GET | `/api/v1/mobile/me/points-history` | Wallet history, cursor-paginated (filters: `limit`, `cursor`); current country, 2 years back |
+| POST | `/api/v1/mobile/me/visits/{entry_id}/feedback` | Rate one visit from the history (once per visit) |
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
 | GET | `/api/v1/mobile/vouchers/{code}` | One of my vouchers (404 if not mine) |
 | POST | `/api/v1/mobile/vouchers/claim` | Claim a printed voucher by code |
@@ -328,7 +329,55 @@ than a silent restart from the top. `limit` defaults to 20 and is clamped to 100
 
 ---
 
-## 7. Communication preferences
+## 7. Rating a visit
+
+Every `purchase` row of `GET /me/points-history` carries two additive fields:
+`can_rate` and `feedback`. Render the rating entry point when `can_rate` is true,
+the rating already given when `feedback` is set, and nothing when both say no.
+
+`POST /me/visits/{entry_id}/feedback` submits it. `entry_id` is the history row's
+`id`, so no extra lookup is needed. A visit can be rated **once**: there is no
+edit and no delete, and a second attempt is `409 VISIT_ALREADY_RATED`.
+
+A visit is rateable when it is the member's own `purchase`, the till resolved to a
+Store Locator shop (the question names the store), and the receipt is inside the
+rating window — 90 days by default. Anything else is `403 VISIT_NOT_RATEABLE`
+with `details.reason` set to `not_a_purchase`, `no_store` or `outside_window`. A
+visit in the other country never appears in the first place: feedback follows the
+shop's country, and the history is read per country.
+
+The form has three criteria — `overall`, `staff`, `product` — each 1-5 and
+**none preselected**. Keep Submit disabled until all three are set: a default of 5
+would turn one tap into 5/5/5 and make every store average meaningless. A comment
+is mandatory when any criterion is at or below the low-rating threshold (3), and
+optional otherwise; either way it must be between the configured minimum and
+1,000 characters.
+
+`/config` carries the rules so both sides enforce the same values:
+
+```json
+"feedback": {
+  "comment_min_chars": 5,
+  "comment_max_chars": 1000,
+  "low_rating_threshold": 3,
+  "rating_window_days": 90
+}
+```
+
+The 5-character minimum is the only hard floor. Use the room above it for
+progressive encouragement — nudge for more detail while the comment is short,
+acknowledge a fuller one — but never block Submit on that nudge. Validation
+failures come back as `422` with a single `error.code`
+(`INVALID_RATING`, `COMMENT_REQUIRED`, `COMMENT_TOO_SHORT`, `COMMENT_TOO_LONG`)
+and `details.field` naming the input to highlight.
+
+Tell the member before they submit that the business may contact them about the
+feedback, and show `message` from the `201` response verbatim on success:
+*Thank you for your feedback. We will contact you if needed.*
+
+---
+
+## 8. Communication preferences
 
 Preferences are scoped to the authenticated account and the application path
 value (`eastore` or `polonez`). They are shared by all devices, unchanged when
@@ -370,7 +419,7 @@ removed and device identifiers are erased from the retained consent history.
 
 ---
 
-## 8. Common errors
+## 9. Common errors
 
 | Code | Meaning |
 |---|---|
@@ -385,7 +434,7 @@ the error schemas in `mobile.yaml`.
 
 ---
 
-## 9. Vouchers
+## 10. Vouchers
 
 The app surfaces vouchers; **redemption happens at the till** (Cash Register
 API), not in the app. Money fields are in cents.
@@ -440,7 +489,7 @@ vouchers; the welcome voucher is usable even before full verification.
 
 ---
 
-## 10. Offers
+## 11. Offers
 
 Promotional offers are country-scoped to the member's `current_country`. The
 backend also returns country-less campaigns/banners that are intended for both
@@ -521,7 +570,7 @@ them with the same API base you use for JSON calls, e.g.
 
 ---
 
-## 11. Stores and opening hours
+## 12. Stores and opening hours
 
 `GET /stores` returns active shops for the member's `current_country`, both
 Polonez and Eastore, ordered by name.
