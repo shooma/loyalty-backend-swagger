@@ -303,6 +303,28 @@ components:
       description: POS terminal identifier. Required for store-scoped token, optional for POS-scoped token.
 
   schemas:
+    MemberPhone:
+      type: string
+      description: |
+        Member phone number. Send E.164 (`+<country code><national number>`,
+        no trunk zero) - that is how members are stored, and the only form
+        guaranteed to round-trip.
+
+        The server canonicalises before the lookup, so these all resolve to the
+        same member: separators (`+353 87 999 1001`), the `00` prefix
+        (`00353879991001`), a national number (`087 999 1001`, completed with
+        the shop's country code) and a country code glued onto a national one
+        (`+3530879991001`). A number carrying `+353` or `+44` keeps it whatever
+        country the shop is in; any other country code identifies nobody.
+
+        A national number carries no country of its own, so an Irish one sent
+        nationally from an NI shop is read as `+44...` and matches nobody -
+        border shops should send those in international form.
+
+        No `pattern` is declared because the accepted spellings are wider than
+        the recommended one - do not use this field to validate till input.
+      example: "+353879991001"
+
     PosTimestamp:
       type: string
       description: UTC timestamp in format YYYY-MM-DD HH:mm:ss
@@ -531,10 +553,7 @@ components:
           description: Loyalty program member QR code
           example: "3806868525361001"
         phone:
-          type: string
-          description: Member phone number
-          pattern: '^\+?[1-9]\d{1,14}$'
-          example: "+353879991001"
+          $ref: '#/components/schemas/MemberPhone'
         vouchers:
           type: array
           description: |
@@ -656,10 +675,7 @@ components:
           description: Loyalty program member QR code
           example: "3806868525361001"
         phone:
-          type: string
-          description: Member phone number
-          pattern: '^\+?[1-9]\d{1,14}$'
-          example: "+353879991001"
+          $ref: '#/components/schemas/MemberPhone'
         vouchers:
           type: array
           description: |

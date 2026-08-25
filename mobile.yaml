@@ -1883,7 +1883,16 @@ components:
           $ref: '#/components/schemas/PhoneCountry'
         phone:
           type: string
-          description: National or international phone number. Separators are allowed.
+          description: |
+            Ireland (+353) or Northern Ireland (+44) number only; any other
+            country code is rejected with 400 `INVALID_PHONE`.
+
+            National (`083 054 0215`) or international (`+353 83 054 0215`,
+            `00353830540215`, `353830540215`) form, separators allowed. A number
+            carrying `+353` or `+44` keeps it regardless of `country`; otherwise
+            `country` supplies the calling code. The server canonicalises to
+            `+<cc><national>` and stores that, so the same number in any of
+            these spellings reaches the same account.
           example: "083 054 0215"
 
     PhoneCountry:
