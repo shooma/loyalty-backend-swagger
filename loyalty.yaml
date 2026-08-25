@@ -61,9 +61,9 @@ paths:
               qr_code: "3806868525361001"
               phone: "+353879991001"
               vouchers:
-                - "96026705000039000001"
-                - "96026705000039000006"
-                - "96026705000039000011"
+                - "BUY-CZGGAM9QY7R4JYE6"
+                - "BUY-QM7HTZ4XKPRW2JND"
+                - "BUY-7WFQKZ3MTRHXPJ9D"
               shop_id: "ATHLO"
               timestamp: "2026-04-15 13:10:00"
               receipt: "009101"
@@ -107,18 +107,18 @@ paths:
                 points_balance: 0
                 discount_total: 500
                 scanned_vouchers:
-                  - code: "96026705000039000001"
+                  - code: "BUY-CZGGAM9QY7R4JYE6"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
                     description: "Voucher 2 off 15"
-                  - code: "96026705000039000006"
+                  - code: "BUY-QM7HTZ4XKPRW2JND"
                     status: "Active"
                     applied: true
                     description: "Voucher 5 off 25"
-                  - code: "96026705000039000011"
+                  - code: "BUY-7WFQKZ3MTRHXPJ9D"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
@@ -165,6 +165,10 @@ paths:
         - Points are awarded only for verified members (`email`, `phone`, `name`, `surname`, `birthday`, `nationality` are all filled)
         - `messages[]` contains receipt-ready loyalty lines (optional, emitted only when applicable): staff discount, used voucher count/details, and accrual summary
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
+        - Temporary (SO20-3031): if `vouchers[]` is absent, the backend consumes the vouchers the
+          matching `get-member` call for the same `shop_id` + `pos_id` + `receipt` reported as
+          applied, and re-checks their thresholds against the basket that call evaluated. This is
+          a stop-gap while the till starts echoing the codes - do not rely on it
         - Authorization is token-based with scope:
           - POS-scoped token: `X-Pos-Id` header is optional
           - Store-scoped token: `X-Pos-Id` header is required
@@ -183,9 +187,9 @@ paths:
               qr_code: "3806868525361001"
               phone: "+353879991001"
               vouchers:
-                - "96026705000039000001"
-                - "96026705000039000006"
-                - "96026705000039000011"
+                - "BUY-CZGGAM9QY7R4JYE6"
+                - "BUY-QM7HTZ4XKPRW2JND"
+                - "BUY-7WFQKZ3MTRHXPJ9D"
               shop_id: "ATHLO"
               transaction_id: "tx-integration-tester-01-1"
               timestamp: "2026-04-15 13:16:00"
@@ -231,18 +235,18 @@ paths:
                 points_collected: 30
                 current_points: 30
                 scanned_vouchers:
-                  - code: "96026705000039000001"
+                  - code: "BUY-CZGGAM9QY7R4JYE6"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
                     description: "Voucher 2 off 15"
-                  - code: "96026705000039000006"
+                  - code: "BUY-QM7HTZ4XKPRW2JND"
                     status: "Used"
                     applied: true
                     description: "Voucher 5 off 25"
-                  - code: "96026705000039000011"
+                  - code: "BUY-7WFQKZ3MTRHXPJ9D"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
@@ -251,8 +255,8 @@ paths:
                     description: "Voucher 11 off 50"
                 vouchers:
                   - printed: false
-                    code: "96026705000030000099"
-                    qr_code_payload: "96026705000030000099"
+                    code: "BUY-K7RQP2MNXV4TJHDC"
+                    qr_code_payload: "BUY-K7RQP2MNXV4TJHDC"
                     description: "Voucher 5 off 25"
                     type: "x_off_y"
                     status: "Issued"
@@ -260,7 +264,7 @@ paths:
                 messages:
                   - "30 points collected"
                   - "Used vouchers: 1"
-                  - "Used voucher: 96026705000039000006 (Voucher 5 off 25)"
+                  - "Used voucher: BUY-QM7HTZ4XKPRW2JND (Voucher 5 off 25)"
                   - "Accrued vouchers: 1"
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -304,6 +308,19 @@ components:
       description: UTC timestamp in format YYYY-MM-DD HH:mm:ss
       pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
       example: "2025-11-12 14:19:00"
+
+    VoucherCode:
+      type: string
+      description: |
+        Voucher redeem code. Clients must treat it as an opaque string despite the
+        prefix: the prefix is a diagnostic aid, not a field to branch on, and the
+        random part carries no meaning.
+
+        A semantic prefix (`WEL`, `BDY`, `BUY`, `IND`, `PTS`) followed by 16
+        characters from `A-Z2-9` excluding `I` and `O`. Pre-2026 20-digit numeric
+        codes are still accepted for historical vouchers.
+      pattern: '^(?:(?:WEL|BDY|BUY|IND|PTS)-[A-HJ-NP-Z2-9]{16}|\d{20})$'
+      example: "BUY-CZGGAM9QY7R4JYE6"
 
     VoucherLifecycleStatus:
       type: string
@@ -421,10 +438,10 @@ components:
       description: Validation or final processing result for a scanned voucher
       properties:
         code:
-          type: string
-          description: Opaque voucher code received from POS (20 digits)
-          pattern: '^\d{20}$'
-          example: "96026705000030000007"
+          allOf:
+            - $ref: '#/components/schemas/VoucherCode'
+          description: Voucher code received from POS
+          example: "BUY-9YT3FQWZKMR6HPBN"
         status:
           $ref: '#/components/schemas/VoucherLifecycleStatus'
         applied:
@@ -471,15 +488,15 @@ components:
           description: Whether the voucher should be printed on the receipt
           example: true
         code:
-          type: string
-          description: Voucher code or text payload that POS should encode as QR/barcode when printing
-          pattern: '^\d{20}$'
-          example: "96026705000030000011"
+          allOf:
+            - $ref: '#/components/schemas/VoucherCode'
+          description: Voucher code that POS should encode as QR/barcode when printing
+          example: "BUY-M4TQZ9KWRHXPJ3ND"
         qr_code_payload:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/VoucherCode'
           description: Optional explicit QR payload when it differs from `code`
-          pattern: '^\d{20}$'
-          example: "96026705000030000011"
+          example: "BUY-M4TQZ9KWRHXPJ3ND"
         description:
           type: string
           description: Voucher description
@@ -520,14 +537,15 @@ components:
           example: "+353879991001"
         vouchers:
           type: array
-          description: Scanned voucher codes from paper receipts or the loyalty app
+          description: |
+            Scanned voucher codes from paper receipts or the loyalty app.
+
           items:
-            type: string
-            pattern: '^\d{20}$'
+            $ref: '#/components/schemas/VoucherCode'
           example:
-            - "96026705000039000001"
-            - "96026705000039000006"
-            - "96026705000039000011"
+            - "BUY-CZGGAM9QY7R4JYE6"
+            - "BUY-QM7HTZ4XKPRW2JND"
+            - "BUY-7WFQKZ3MTRHXPJ9D"
         shop_id:
           type: string
           description: Shop identifier
@@ -644,14 +662,17 @@ components:
           example: "+353879991001"
         vouchers:
           type: array
-          description: Voucher codes that remained selected at checkout
+          description: |
+            Voucher codes that remained selected at checkout. Required whenever a
+            voucher was applied: vouchers are consumed on `finalize-order` only,
+            and a code that is not echoed here stays redeemable.
+
           items:
-            type: string
-            pattern: '^\d{20}$'
+            $ref: '#/components/schemas/VoucherCode'
           example:
-            - "96026705000039000001"
-            - "96026705000039000006"
-            - "96026705000039000011"
+            - "BUY-CZGGAM9QY7R4JYE6"
+            - "BUY-QM7HTZ4XKPRW2JND"
+            - "BUY-7WFQKZ3MTRHXPJ9D"
         shop_id:
           type: string
           description: Shop identifier
@@ -746,7 +767,7 @@ components:
           example:
             - "30 points collected"
             - "Used vouchers: 1"
-            - "Used voucher: 96026705000039000006 (Voucher 5 off 25)"
+            - "Used voucher: BUY-QM7HTZ4XKPRW2JND (Voucher 5 off 25)"
             - "Accrued vouchers: 1"
 
     ErrorResponse:

@@ -223,6 +223,14 @@ paths:
 
         On staging, use code `000000` for these fixed-OTP test phones:
         `+353871234561`, `+442800000000`, `+353870000000`.
+
+        A profile may hold only a limited number of active sessions (2 by
+        default). Issuing a session beyond that limit revokes the least
+        recently used one, so an older device receives HTTP 401 with error code
+        `SESSION_REVOKED` on its next request and must return to the
+        unauthenticated flow. Logging in again from the same `device_id`
+        replaces that device's own session and never costs another device its
+        slot, so a stable `device_id` across reinstalls matters.
       operationId: mobileVerifyOtp
       requestBody:
         required: true
@@ -334,6 +342,10 @@ paths:
       tags:
         - Mobile - Auth
       summary: List active mobile sessions
+      description: |
+        Active, non-expired sessions of the current profile, the requesting one
+        flagged with `is_current`. Never more than the active-session limit
+        (2 by default) — see `/auth/otp/verify`.
       operationId: mobileListSessions
       security:
         - MobileBearerAuth: []
@@ -376,6 +388,9 @@ paths:
       tags:
         - Mobile - Profile
       summary: Get current profile
+      description: >-
+        Also refreshes the mobile session activity and sliding expiry; the app
+        calls this endpoint on startup and resume.
       operationId: mobileGetMe
       security:
         - MobileBearerAuth: []
@@ -1434,16 +1449,44 @@ components:
               details:
                 field: device_id
     Unauthorized:
-      description: Missing, invalid, expired, or revoked mobile session token.
+      description: |
+        Missing, invalid, expired, or revoked mobile session token.
+
+        Two error codes are possible and the app should treat them differently:
+
+        - `UNAUTHORIZED` — generic. Drop to the unauthenticated flow silently.
+        - `SESSION_REVOKED` — this device was signed out by the active-session
+          limit, either after another login or during existing-session cleanup
+          (see `/auth/otp/verify`). Clear the local token and tell the user why.
+
+        In both cases the stored token must be discarded; only the message
+        shown to the user differs.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            status: false
-            error:
-              code: UNAUTHORIZED
-              message: Invalid or expired session token
+          examples:
+            unauthorized:
+              summary: Unknown, expired, or logged-out token
+              value:
+                status: false
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid or expired session token
+            sessionRevoked:
+              summary: Signed out after another device logged in
+              value:
+                status: false
+                error:
+                  code: SESSION_REVOKED
+                  message: Session was signed out because this account signed in on another device
+            sessionLimitCleanup:
+              summary: Signed out during existing-session cleanup
+              value:
+                status: false
+                error:
+                  code: SESSION_REVOKED
+                  message: Session was signed out because this account had too many active devices
     Conflict:
       description: State conflict, for example email already verified or changed.
       content:
@@ -2823,6 +2866,9 @@ components:
           type: string
           format: date-time
           nullable: true
+          description: >-
+            Last successful GET /me session heartbeat. Other authenticated
+            endpoints validate the session without changing this timestamp.
         expires_at:
           type: string
           format: date-time

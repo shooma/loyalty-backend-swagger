@@ -97,9 +97,26 @@ Send it on every authenticated call:
 Authorization: Bearer est_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-The token has a **sliding 365-day expiry** (renewed on each use). Manage sessions
-with `GET /auth/sessions`, `POST /auth/logout` (this device),
-`POST /auth/sessions/revoke-all`.
+The token has a **sliding 365-day expiry**. Every authenticated request validates
+it; `GET /me`, called by the app on startup/resume, refreshes the expiry and
+session activity. Manage sessions with `GET /auth/sessions`, `POST /auth/logout`
+(this device), and `POST /auth/sessions/revoke-all`.
+
+**Active-session limit (max 2 devices by default).** A profile keeps at most two
+active sessions. A third login revokes the least recently used one, so that
+device gets `401 SESSION_REVOKED` on its next call and must return to the login
+screen. Two consequences for the app:
+
+- Persist `device_id` through a platform-specific mechanism whose reinstall
+  and reset semantics have been verified. Do not rely on Android Keystore
+  alone: uninstalling the app or clearing its data removes app-owned keys. On
+  Android, evaluate a stable source such as `ANDROID_ID` with its signing-key,
+  user, device, and reset scope, or use another explicitly tested recovery
+  flow. A re-login with the same `device_id` replaces only that device's own
+  session; a fresh id looks like a new device and costs the user one of their
+  two slots.
+- Re-validate the session when returning from background — do not skip the call
+  because profile/card data is cached — so a signed-out device notices promptly.
 
 ---
 
@@ -358,13 +375,13 @@ removed and device identifiers are erased from the retained consent history.
 | Code | Meaning |
 |---|---|
 | `400` | Bad request (e.g. invalid `country`, malformed phone, missing field) |
-| `401` | Missing / invalid / expired Bearer token |
+| `401` | Missing / invalid / expired Bearer token (`UNAUTHORIZED`), or signed out by the active-session limit (`SESSION_REVOKED`) |
 | `429` | OTP rate limit — wait `retry_after` seconds |
 | `503` | OTP delivery provider unavailable |
 
 Errors carry a machine-readable code (e.g. `INVALID_COUNTRY`, `INVALID_PLATFORM`,
-`INVALID_JSON`, `OTP_RATE_LIMIT_REQUEST`, `OTP_LOCKED`) — see the error schemas in
-`mobile.yaml`.
+`INVALID_JSON`, `OTP_RATE_LIMIT_REQUEST`, `OTP_LOCKED`, `SESSION_REVOKED`) — see
+the error schemas in `mobile.yaml`.
 
 ---
 
