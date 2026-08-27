@@ -314,6 +314,12 @@ is still a visit worth showing. `type` is `purchase`, `conversion` (Head Office
 turning points into vouchers — always negative points, dated the day HO scheduled)
 or `adjustment` (a manual back-office correction, which may have no store).
 
+A purchase also carries `staff_discount_cents`: the staff discount actually
+applied to that receipt in minor currency units (`0` when none was applied).
+Non-purchase rows return `null`. This is a checkout-time snapshot; never infer the
+chip from `/me.staff_discount`, which is the member's current rate and can change
+after the purchase.
+
 `occurred_at` is UTC and comes from the till receipt, not from when the finalize
 call reached Odoo — a till replaying a queued receipt keeps its real time. A
 conversion reports the date Head Office scheduled: a run delayed by downtime
@@ -344,7 +350,9 @@ Store Locator shop (the question names the store), and the receipt is inside the
 rating window — 90 days by default. Anything else is `403 VISIT_NOT_RATEABLE`
 with `details.reason` set to `not_a_purchase`, `no_store` or `outside_window`. A
 visit in the other country never appears in the first place: feedback follows the
-shop's country, and the history is read per country.
+shop's country, and the history is read per country. The endpoint holds the same
+line, so an `entry_id` cached from before a country switch comes back `404`
+rather than being rated out of view.
 
 The form has three criteria — `overall`, `staff`, `product` — each 1-5 and
 **none preselected**. Keep Submit disabled until all three are set: a default of 5
