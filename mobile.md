@@ -314,11 +314,12 @@ is still a visit worth showing. `type` is `purchase`, `conversion` (Head Office
 turning points into vouchers — always negative points, dated the day HO scheduled)
 or `adjustment` (a manual back-office correction, which may have no store).
 
-A purchase also carries `staff_discount_cents`: the staff discount actually
-applied to that receipt in minor currency units (`0` when none was applied).
-Non-purchase rows return `null`. This is a checkout-time snapshot; never infer the
-chip from `/me.staff_discount`, which is the member's current rate and can change
-after the purchase.
+A purchase also carries `staff_discount_cents`: the staff discount confirmed as
+applied to that receipt in minor currency units. A positive value is reconciled
+against the matching get-member basket. `0` means either no staff discount or
+that application could not be confirmed; do not show the chip in either case.
+Non-purchase rows return `null`. Never infer this checkout-time value from
+`/me.staff_discount`, which is the member's current rate and can change later.
 
 `occurred_at` is UTC and comes from the till receipt, not from when the finalize
 call reached Odoo — a till replaying a queued receipt keeps its real time. A

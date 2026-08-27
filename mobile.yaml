@@ -724,8 +724,8 @@ paths:
         switching country switches the whole history.
 
         One row per event. Everything about a visit stays inside its own row -
-        points earned, vouchers spent, vouchers handed out and the staff discount
-        actually applied - rather than being split across extra rows. Rows with
+        points earned, vouchers spent, vouchers handed out and the confirmed staff
+        discount applied - rather than being split across extra rows. Rows with
         `points: 0` are real: a basket too small to earn anything is still a visit.
         Use `staff_discount_cents`, not the member's current profile rate, to decide
         whether that receipt gets a Staff discount chip.
@@ -2862,9 +2862,11 @@ components:
           nullable: true
           minimum: 0
           description: |
-            Staff discount actually applied to this receipt in minor currency
-            units. `0` means no staff discount was applied; null for non-purchase
-            rows. This is a checkout-time snapshot and must not be inferred from
+            Staff discount confirmed as applied to this receipt in minor currency
+            units. A positive value is reconciled against the matching get-member
+            basket. `0` means either no staff discount or that application could
+            not be confirmed; clients should not show the chip in either case.
+            Null for non-purchase rows. Never infer this checkout-time value from
             the member's current `staff_discount` profile block.
           example: 900
         receipt:
