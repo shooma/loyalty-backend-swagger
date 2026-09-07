@@ -162,8 +162,14 @@ paths:
       summary: Request phone OTP
       description: |
         Generates a 6-digit OTP for the phone number and dispatches it through
-        the configured delivery provider. Phone is normalized to E.164 using
-        `country` (`ie` => `+353`, `ni` => `+44`).
+        the configured delivery provider. Phone is normalized and validated as
+        E.164 using `country` (`ie` => `+353`, `ni` => `+44`).
+
+        Production sends the Odoo-generated code through Twilio Programmable
+        Messaging SMS; Odoo remains responsible for expiry, five-attempt
+        lockout, and code verification. Twilio Verify is not used. A successful
+        response means Twilio accepted the SMS (normally as `queued`), not that
+        final handset delivery has already occurred.
 
         On staging, the following test phones use fixed OTP `000000` and do not
         send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
@@ -212,14 +218,23 @@ paths:
         - Mobile - Auth
       summary: Verify phone OTP
       description: |
-        Verifies the 6-digit OTP.
+        Verifies the 6-digit OTP locally in Odoo. Each issued code allows a
+        maximum of five failed submissions before it locks.
 
         If the phone already belongs to a loyalty profile, the response is
         `status=authenticated` with a mobile Bearer session token.
 
+        `account_state` says which screen to open. `deletion_pending` means the
+        account was scheduled for deletion and the window is still open: the
+        token is **restricted** to `/me/delete/cancel` and `/auth/logout`, and
+        the response carries `requested_at` and `eligible_for_deletion_at` for
+        the restore screen.
+
         If the phone is unknown, the response is `status=signup_required` with
         a short-lived `signup_token`. The app must then call
-        `/auth/signup/complete`.
+        `/auth/signup/complete`. Note that an account already erased is
+        indistinguishable from a number never seen: nothing is retained to
+        recognise a returning member, by design.
 
         On staging, use code `000000` for these fixed-OTP test phones:
         `+353871234561`, `+442800000000`, `+353870000000`.
@@ -242,6 +257,7 @@ paths:
               country: ie
               phone: "879991001"
               code: "654321"
+              application: eastore
               device_id: "ios-device-uuid"
               platform: ios
               device_name: "Mike's iPhone"
@@ -263,6 +279,18 @@ paths:
                     expires_at: "2027-06-11T21:43:39Z"
                     partner_id: 22
                     is_profile_complete: true
+                    account_state: active
+                deletionPending:
+                  summary: Account scheduled for deletion - restricted session
+                  value:
+                    status: authenticated
+                    token: "est_XI3ZmjHz0bnrybRr4uQGmBMlpPmAycGl3urc-opGdsA"
+                    expires_at: "2027-06-11T21:43:39Z"
+                    partner_id: 22
+                    is_profile_complete: true
+                    account_state: deletion_pending
+                    requested_at: "2026-06-11T21:43:39Z"
+                    eligible_for_deletion_at: "2026-06-14T21:43:39Z"
                 signupRequired:
                   value:
                     status: signup_required
@@ -288,6 +316,12 @@ paths:
         prefix (`+353` → `ie`, `+44` → `ni`); the welcome voucher is issued in
         that country. Switching to the other country later via `PUT /me/country`
         issues that country's welcome voucher too.
+
+        A contact that already carries an account somebody archived in the back
+        office is reopened rather than duplicated: proving the number again is
+        what brings it back. An account with a *deletion request* pending is
+        not - that one is restored through `/me/delete/cancel`, which OTP
+        already routes to, so this endpoint refuses it with `409`.
       operationId: mobileCompleteSignup
       requestBody:
         required: true
@@ -299,6 +333,7 @@ paths:
               signup_token: "sst_9wK3s6vtE7r4m3Y8pQ"
               first_name: Alexandra
               terms_accepted: true
+              application: eastore
               device_id: "android-device-uuid"
               platform: android
               device_name: "Pixel 9"
@@ -312,6 +347,17 @@ paths:
                 $ref: '#/components/schemas/AuthenticatedResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          description: The account is scheduled for deletion; restore it instead.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: ACCOUNT_DELETION_PENDING
+                  message: This account is scheduled for deletion; restore it instead of registering again
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -358,6 +404,8 @@ paths:
                 $ref: '#/components/schemas/SessionsResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -380,6 +428,8 @@ paths:
                 revoked: 2
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -403,6 +453,8 @@ paths:
                 $ref: '#/components/schemas/Profile'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
     patch:
@@ -440,6 +492,100 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/push-registration:
+    put:
+      tags:
+        - Mobile - Profile
+      summary: Register or refresh this install's push token
+      description: |
+        Binds the FCM registration token of the calling installation. The
+        account, app, device and platform all come from the Bearer session, so
+        the body carries only the token and a client cannot register against
+        another app or device.
+
+        Idempotent, and meant to be called after login, on every token rotation
+        and on resume. An unchanged token seen again within the debounce window
+        is acknowledged without a write.
+
+        If the same token turns up on a different installation — FCM can hand a
+        token to a restored device — the older registration is revoked so a
+        token is never active twice.
+
+        Registrations are revoked automatically on logout, logout-all, phone
+        change, session eviction and account deletion. Turning
+        `push_notifications` off does **not** drop the token: consent is checked
+        at send time, so switching it back on works without a new OS prompt.
+      operationId: mobilePutPushRegistration
+      security:
+        - MobileBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushRegistrationRequest'
+            example:
+              token: "fMEp0K1sT0k3n:APA91bH..."
+      responses:
+        '200':
+          description: Token registered or refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '409':
+          description: >-
+            Another installation is claiming the same token, which happens when
+            FCM hands one to a restored device. Retry the same request later, on
+            the next resume; the session is unaffected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: REGISTRATION_CONFLICT
+                  message: This push token is being claimed by another installation, retry
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Mobile - Profile
+      summary: Stop targeting this install
+      description: |
+        Revokes the calling installation's push registration, for example after
+        the OS permission was withdrawn. Idempotent: an install with nothing
+        registered still gets a 200, because the outcome is the same.
+
+        This is device-local. It does not change the account's
+        `push_notifications` preference, so the account's other devices keep
+        receiving push.
+      operationId: mobileDeletePushRegistration
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Registration revoked, or nothing was registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushRegistrationDeleteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -463,6 +609,9 @@ paths:
 
         `push_notifications` is the account preference only. The app and push
         delivery service must separately check the target device's OS permission.
+
+        The path application must match the session's own app, otherwise the
+        call is rejected with `403 APPLICATION_MISMATCH`.
       operationId: mobileGetPreferences
       security:
         - MobileBearerAuth: []
@@ -477,6 +626,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PreferencesForbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
     patch:
@@ -495,9 +646,12 @@ paths:
         `loyalty.mobile.preference.communication_allowed()` gate immediately
         before delivery to re-check verification and the latest value. This addon
         does not currently implement marketing delivery; transactional OTP and
-        email-verification messages intentionally bypass these preferences. At
-        account anonymisation, current preferences are removed and device IDs are
-        erased from retained consent history.
+        email-verification messages intentionally bypass these preferences. When
+        an account is permanently deleted, the current preferences and their
+        whole consent audit history are removed with it.
+
+        The path application must match the session's own app, otherwise the
+        call is rejected with `403 APPLICATION_MISMATCH`.
       operationId: mobilePatchPreferences
       security:
         - MobileBearerAuth: []
@@ -521,6 +675,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PreferencesForbidden'
         '409':
           description: Profile is not verified, so marketing email/SMS cannot be enabled.
           content:
@@ -584,6 +740,8 @@ paths:
                     field: country
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -593,23 +751,81 @@ paths:
         - Mobile - Profile
       summary: Request account deletion
       description: |
-        Soft-deletes the loyalty profile and revokes all mobile sessions.
-        Hard deletion is handled later by retention cleanup.
+        Closes the account immediately and opens a 72-hour cancellation window.
+
+        Every mobile session and QR token is revoked at once, so the account is
+        unusable at the till and on every device from this call onward - the app
+        must return to the unauthenticated flow. Nothing is erased yet: points,
+        vouchers and history are all still there, and logging in again with the
+        same number during the window lands on the restore screen with a
+        restricted session (see `/auth/otp/verify`).
+
+        Once the window closes, the daily cleanup erases the account
+        irreversibly and it can never be reactivated. Registering the same
+        number afterwards creates a new account with a new Loyalty ID and none
+        of the previous points, vouchers or history.
       operationId: mobileDeleteMe
       security:
         - MobileBearerAuth: []
       responses:
         '200':
-          description: Account marked deleted.
+          description: Deletion requested; the cancellation window is open.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeleteProfileResponse'
               example:
                 deleted: true
-                deleted_at: "2026-06-11T21:43:39Z"
+                requested_at: "2026-06-11T21:43:39Z"
+                eligible_for_deletion_at: "2026-06-14T21:43:39Z"
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/delete/cancel:
+    post:
+      tags:
+        - Mobile - Profile
+      summary: Restore an account that is pending deletion
+      description: |
+        Takes a deletion request back and returns the profile. Nothing was
+        removed during the window, so the account comes back exactly as it was:
+        points, vouchers, history, profile fields and the verified email.
+
+        One of only two endpoints a restricted session may call. No re-login is
+        needed afterwards - the same token becomes an ordinary session, because
+        the restriction was derived from the account's state.
+
+        `409` means the account is already active again, cancelled from another
+        device: just continue to the main screen. `401` means the opposite race
+        - the cleanup got there first and took the session with it, so the
+        account is gone and the app should route to fresh signup.
+      operationId: mobileCancelDeleteMe
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: The restored profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The account is not scheduled for deletion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: ACCOUNT_DELETION_NOT_PENDING
+                  message: This account is not scheduled for deletion
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -636,6 +852,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '409':
           $ref: '#/components/responses/Conflict'
         '429':
@@ -673,6 +891,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -703,6 +923,8 @@ paths:
                 $ref: '#/components/schemas/CardResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -769,6 +991,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -893,6 +1117,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -920,6 +1146,8 @@ paths:
                 $ref: '#/components/schemas/Voucher'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           description: Voucher not found or not owned by the member.
           content:
@@ -975,6 +1203,8 @@ paths:
                   message: Voucher is not claimable (used, expired, or revoked)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           description: Voucher code does not exist.
           content:
@@ -1036,6 +1266,8 @@ paths:
                     offer_count: 12
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1136,6 +1368,8 @@ paths:
                 offset: 0
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1189,6 +1423,8 @@ paths:
                   valid_until: "2026-06-29"
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           description: Offer not found or not currently visible.
           content:
@@ -1356,6 +1592,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1432,6 +1670,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1461,6 +1701,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1482,6 +1724,8 @@ paths:
                 $ref: '#/components/schemas/StoreResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1493,7 +1737,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: Mobile session token
-      description: Token returned by `/auth/otp/verify` or `/auth/signup/complete`.
+      description: |
+        Token returned by `/auth/otp/verify` or `/auth/signup/complete`.
+
+        A token issued for an account that is pending deletion is
+        **restricted**: only `POST /me/delete/cancel` and `POST /auth/logout`
+        accept it, and every other authenticated endpoint answers
+        `403 ACCOUNT_DELETION_PENDING`. The restriction comes from the
+        account's state rather than from the token, so the same token becomes
+        an ordinary session the moment the deletion is cancelled.
 
   parameters:
     CountryQueryParam:
@@ -1560,6 +1812,66 @@ components:
                 error:
                   code: SESSION_REVOKED
                   message: Session was signed out because this account had too many active devices
+    PreferencesForbidden:
+      description: |
+        Refused before the preferences were read or written. `error.code` says
+        which rule applied:
+
+        - `ACCOUNT_DELETION_PENDING` - the session is restricted to
+          `POST /me/delete/cancel` and `POST /auth/logout`
+          (see `AccountDeletionPending` for the `details` shape);
+        - `APPLICATION_MISMATCH` - the `{application}` in the path is not the
+          app this session was issued for.
+
+        The deletion check runs first, so a restricted session gets
+        `ACCOUNT_DELETION_PENDING` whichever app it names.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            deletionPending:
+              summary: Session restricted while deletion is pending
+              value:
+                status: false
+                error:
+                  code: ACCOUNT_DELETION_PENDING
+                  message: This account is scheduled for deletion; restore it to continue
+                  details:
+                    requested_at: "2026-06-11T21:43:39Z"
+                    eligible_for_deletion_at: "2026-06-14T21:43:39Z"
+            applicationMismatch:
+              summary: Session belongs to the other branded app
+              value:
+                status: false
+                error:
+                  code: APPLICATION_MISMATCH
+                  message: This session belongs to a different application
+                  details:
+                    field: application
+    AccountDeletionPending:
+      description: |
+        The account is scheduled for deletion, so this session is restricted to
+        `POST /me/delete/cancel` and `POST /auth/logout`.
+
+        `details` carries the window, so an app that cold-starts holding a
+        restricted token can draw the restore screen without a readable profile
+        endpoint. Present `eligible_for_deletion_at` as "you have until": it is
+        when the daily cleanup becomes *allowed* to run, so the real deadline is
+        up to a day later - and keep offering the restore button until the API
+        actually refuses.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error:
+              code: ACCOUNT_DELETION_PENDING
+              message: This account is scheduled for deletion; restore it to continue
+              details:
+                requested_at: "2026-06-11T21:43:39Z"
+                eligible_for_deletion_at: "2026-06-14T21:43:39Z"
     Conflict:
       description: State conflict, for example email already verified or changed.
       content:
@@ -1595,6 +1907,9 @@ components:
         - `not_a_purchase` - the row is a conversion, adjustment or opening balance;
         - `no_store` - the till never resolved to a Store Locator shop;
         - `outside_window` - the receipt is older than the rating window.
+
+        This status also carries `ACCOUNT_DELETION_PENDING` when the session is
+        restricted (see `AccountDeletionPending`); branch on `error.code`.
       content:
         application/json:
           schema:
@@ -2350,6 +2665,7 @@ components:
         - country
         - phone
         - code
+        - application
         - device_id
         - platform
       properties:
@@ -2362,6 +2678,8 @@ components:
           type: string
           pattern: '^\d{6}$'
           example: "654321"
+        application:
+          $ref: '#/components/schemas/MobileApplication'
         device_id:
           type: string
           description: Stable app/device identifier generated by the mobile app.
@@ -2388,6 +2706,7 @@ components:
         - expires_at
         - partner_id
         - is_profile_complete
+        - account_state
       properties:
         status:
           type: string
@@ -2404,6 +2723,22 @@ components:
           type: integer
         is_profile_complete:
           type: boolean
+        account_state:
+          type: string
+          enum:
+            - active
+            - deletion_pending
+          description: >-
+            `deletion_pending` means the token is restricted to
+            `/me/delete/cancel` and `/auth/logout`; route to the restore screen.
+        requested_at:
+          type: string
+          format: date-time
+          description: Present only when `account_state` is `deletion_pending`.
+        eligible_for_deletion_at:
+          type: string
+          format: date-time
+          description: Present only when `account_state` is `deletion_pending`.
 
     SignupRequiredResponse:
       type: object
@@ -2429,6 +2764,7 @@ components:
         - signup_token
         - first_name
         - terms_accepted
+        - application
         - device_id
         - platform
       properties:
@@ -2442,6 +2778,8 @@ components:
         terms_accepted:
           type: boolean
           description: Must be true.
+        application:
+          $ref: '#/components/schemas/MobileApplication'
         device_id:
           type: string
         platform:
@@ -2492,6 +2830,7 @@ components:
           type: string
           format: date
           nullable: true
+          description: Optional for unverified members; required for verification and limited to age 18–150.
         country_of_origin:
           type: string
           nullable: true
@@ -2588,6 +2927,7 @@ components:
         date_of_birth:
           type: string
           format: date
+          description: Optional for an unverified member; when supplied, age must be 18–150 inclusive.
         country_of_origin:
           type: string
           description: One of the `countries[].value` entries from `/config`.
@@ -2602,9 +2942,58 @@ components:
 
     MobileApplication:
       type: string
+      description: >-
+        Branded app the client was built as. One backend serves both, so the
+        session records which app it belongs to: it scopes the active-session
+        limit, device uniqueness and push targeting. Fixed at build time — the
+        app reports the same value on every login.
       enum:
         - eastore
         - polonez
+
+    PushRegistrationRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          maxLength: 512
+          description: FCM registration token obtained by the app from the messaging SDK.
+
+    PushRegistrationResponse:
+      type: object
+      required:
+        - registered
+        - application
+        - device_id
+        - platform
+      properties:
+        registered:
+          type: boolean
+        application:
+          $ref: '#/components/schemas/MobileApplication'
+        device_id:
+          type: string
+        platform:
+          $ref: '#/components/schemas/Platform'
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PushRegistrationDeleteResponse:
+      type: object
+      required:
+        - registered
+        - revoked
+      properties:
+        registered:
+          type: boolean
+          description: Always false; the install is no longer a push target.
+        revoked:
+          type: boolean
+          description: False when there was nothing left to revoke.
 
     PreferencesResponse:
       type: object
@@ -2647,13 +3036,22 @@ components:
       type: object
       required:
         - deleted
+        - requested_at
+        - eligible_for_deletion_at
       properties:
         deleted:
           type: boolean
-        deleted_at:
+        requested_at:
           type: string
           format: date-time
-          nullable: true
+          description: When the deletion was asked for.
+        eligible_for_deletion_at:
+          type: string
+          format: date-time
+          description: >-
+            When the daily cleanup becomes allowed to erase the account. The
+            real deadline is up to one cron interval later, and cancellation
+            keeps working until the cleanup actually starts.
 
     EmailVerificationRequestResponse:
       type: object
@@ -2833,11 +3231,12 @@ components:
           nullable: true
           description: |
             UTC. For a purchase this is the till receipt time, not when the till's
-            call reached the server. For a conversion it is the date Head Office
-            scheduled - a run delayed by downtime still reports the scheduled date,
-            and several missed dates collapse into one entry dated by the latest of
-            them. An immediate conversion triggered by an administrator has no
-            scheduled date and reports the day it ran.
+            call reached the server. A conversion uses midnight on the date Head
+            Office scheduled; several missed dates collapse into one entry using
+            the latest of them. If the wallet already has activity at or after
+            that time, the timestamp is one second after its latest entry, so the
+            debit follows the activity that funded it. An immediate conversion
+            uses the day it ran, with the same ordering rule.
           example: "2026-02-28T10:32:00Z"
         points:
           type: integer
@@ -3161,6 +3560,7 @@ components:
       type: object
       required:
         - id
+        - application
         - device_id
         - platform
         - created_at
@@ -3170,6 +3570,8 @@ components:
       properties:
         id:
           type: integer
+        application:
+          $ref: '#/components/schemas/MobileApplication'
         device_id:
           type: string
         device_name:

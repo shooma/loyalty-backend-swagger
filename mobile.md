@@ -60,6 +60,13 @@ Content-Type: application/json
 - Response: `{ "expires_in": 300, "retry_after": 60 }`.
 - OTP lifetime: **5 minutes**. Throttling: **1 request / minute** and **5 / hour**
   per phone (plus per-IP caps). Expect `429` if you hammer it.
+- Production sends the Odoo-generated code through Twilio Programmable
+  Messaging SMS. Odoo still verifies the code; Twilio Verify is not used.
+- A successful request means Twilio accepted the SMS for delivery (normally
+  `queued`), not that the handset has already received it.
+- The SMS is only valid for the OTP lifetime: if the carrier cannot deliver it
+  within those 5 minutes it is dropped, never delivered late. Ask the user to
+  request a new code rather than waiting.
 
 ### 2.2 Verify OTP
 
@@ -67,11 +74,15 @@ Content-Type: application/json
 POST /api/v1/mobile/auth/otp/verify
 Content-Type: application/json
 
-{ "country": "ie", "phone": "871234561", "code": "000000", "device_id": "<your-device-uuid>", "platform": "android" }
+{ "country": "ie", "phone": "871234561", "code": "000000", "application": "eastore", "device_id": "<your-device-uuid>", "platform": "android" }
 ```
 
-- `device_id` and `platform` are **required**. `platform` must be `android` or
-  `ios` (otherwise `400 INVALID_PLATFORM`).
+- `application`, `device_id` and `platform` are **required**.
+- `application` is `eastore` or `polonez` (otherwise `400 INVALID_APPLICATION`).
+  It is fixed at build time: send the app you were built as, the same value on
+  every login. One backend serves both apps, and the session records which one
+  it belongs to — see the note under 2.4.
+- `platform` must be `android` or `ios` (otherwise `400 INVALID_PLATFORM`).
 - **Known phone** → `{ "status": "authenticated", "token": "est_...", ... }`.
 - **New phone** → `{ "status": "signup_required", "signup_token": "..." }` →
   call `signup/complete`.
@@ -83,11 +94,11 @@ Content-Type: application/json
 POST /api/v1/mobile/auth/signup/complete
 Content-Type: application/json
 
-{ "signup_token": "...", "first_name": "Test", "terms_accepted": true, "device_id": "<your-device-uuid>", "platform": "android" }
+{ "signup_token": "...", "first_name": "Test", "terms_accepted": true, "application": "eastore", "device_id": "<your-device-uuid>", "platform": "android" }
 ```
 
-Returns a session `token`. Like verify, `device_id` and `platform`
-(`android`|`ios`) are **required**.
+Returns a session `token`. Like verify, `application` (`eastore`|`polonez`),
+`device_id` and `platform` (`android`|`ios`) are **required**.
 
 ### 2.4 Using the session token
 
@@ -102,10 +113,25 @@ it; `GET /me`, called by the app on startup/resume, refreshes the expiry and
 session activity. Manage sessions with `GET /auth/sessions`, `POST /auth/logout`
 (this device), and `POST /auth/sessions/revoke-all`.
 
-**Active-session limit (max 2 devices by default).** A profile keeps at most two
-active sessions. A third login revokes the least recently used one, so that
-device gets `401 SESSION_REVOKED` on its next call and must return to the login
-screen. Two consequences for the app:
+**One session per app.** Sessions are scoped to the `application` reported at
+login, so the same account can be signed in to Eastore and Polonez at the same
+time, on the same phone, without either logging the other out. `GET
+/auth/sessions` returns `application` on every row so "Manage devices" can tell
+them apart.
+
+**Account-wide, not per app: "log out everywhere" and the device list.**
+Sessions and communication preferences are per app, but `POST
+/auth/sessions/revoke-all` deliberately revokes **every** session of the
+account, Eastore and Polonez alike — it is a security action, and scoping it to
+one app would weaken it exactly when it is needed. For the same reason `GET
+/auth/sessions` lists the account's installs across both apps, so "Manage
+devices" may show a phone that only has the other app on it.
+
+**Active-session limit (max 2 devices per app by default).** A profile keeps at
+most two active sessions **per application** — two Eastore installs and two
+Polonez installs coexist. A third login *in the same app* revokes that app's
+least recently used session, so that device gets `401 SESSION_REVOKED` on its
+next call and must return to the login screen. Two consequences for the app:
 
 - Persist `device_id` through a platform-specific mechanism whose reinstall
   and reset semantics have been verified. Do not rely on Android Keystore
@@ -140,7 +166,7 @@ demo member dedicated to mobile testing):
 
 ```
 request:  { "country": "ie", "phone": "871234561" }
-verify:   { "country": "ie", "phone": "871234561", "code": "000000", "device_id": "dev-1" }
+verify:   { "country": "ie", "phone": "871234561", "code": "000000", "application": "eastore", "device_id": "dev-1", "platform": "android" }
 → status = "authenticated"
 ```
 
@@ -148,7 +174,9 @@ verify:   { "country": "ie", "phone": "871234561", "code": "000000", "device_id"
 > are reserved for POS / cash-register integration testing.
 >
 > Want to exercise the **signup** flow deterministically? Ask the backend team to
-> point `otp_test_phone` at a fresh, non-existent number.
+> add a fresh, non-existent number to `polonez_loyalty_mobile_api.otp_test_phones`.
+> The singular legacy setting `otp_test_phone` is used only when the plural
+> setting is empty.
 
 ### Option B — Mailtrap inbox (for any other phone)
 
@@ -183,7 +211,7 @@ Use these phones with the OTP flow. Phones are stored as E.164; pass them split 
 | Points Small Balance | `+353871234572` | `871234572` | 399 points |
 | Unverified Email Member | `+353871234573` | `871234573` | email not verified |
 | Unverified DOB Member | `+353871234574` | `871234574` | no date of birth |
-| Deleted Pending Member | `+353871234575` | `871234575` | soft-deleted account |
+| Deleted Pending Member | `+353871234575` | `871234575` | deletion requested — logs in restricted, restore screen |
 
 ### Reserved — DO NOT use (POS / cash-register integration)
 
@@ -203,6 +231,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/config` | Welcome voucher, legal doc versions, country/gender dropdowns (call before login). `?country=ie\|ni` (default `ie`) |
 | GET | `/api/v1/mobile/legal/terms` | Terms & Conditions HTML. `?country=ie\|ni` (default `ie`) |
 | GET | `/api/v1/mobile/legal/privacy` | Privacy Policy HTML. `?country=ie\|ni` (default `ie`) |
+| GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
 
 ### Auth (no token)
 | Method | Path | Purpose |
@@ -217,7 +246,8 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/me` | Profile (incl. `current_country`, read-only `staff_discount` block for staff) |
 | PATCH | `/api/v1/mobile/me` | Update profile (phone change rejected) |
 | PUT | `/api/v1/mobile/me/country` | Switch operating country IE/NI (points/vouchers not transferred) |
-| POST | `/api/v1/mobile/me/delete` | Soft-delete account |
+| POST | `/api/v1/mobile/me/delete` | Request account deletion (72h cancellation window) |
+| POST | `/api/v1/mobile/me/delete/cancel` | Restore an account pending deletion |
 | POST | `/api/v1/mobile/me/email/request` | Request email verification code |
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
 | GET/PATCH | `/api/v1/mobile/me/preferences/{application}` | Read/update Eastore or Polonez communication preferences |
@@ -230,12 +260,18 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/offers/campaigns` | Visible offer campaigns for current country |
 | GET | `/api/v1/mobile/offers` | Paginated offers + banners (filters: `campaign_id`, `limit`, `offset`) |
 | GET | `/api/v1/mobile/offers/{id}` | Visible offer detail (404 if expired/cross-country) |
-| GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
 | GET | `/api/v1/mobile/stores` | Stores for current country, with format/facility/favourite filters |
 | POST/PUT/DELETE | `/api/v1/mobile/stores/{code}/favorite` | Add/remove a favourite store |
+| PUT | `/api/v1/mobile/me/push-registration` | Register/refresh this install's FCM token |
+| DELETE | `/api/v1/mobile/me/push-registration` | Stop targeting this install |
 | GET | `/api/v1/mobile/auth/sessions` | List active sessions |
 | POST | `/api/v1/mobile/auth/logout` | Revoke this device's session |
 | POST | `/api/v1/mobile/auth/sessions/revoke-all` | Revoke all sessions |
+
+Standard registration may leave `date_of_birth` empty; the member then remains
+unverified. When the date is supplied through `PATCH /me`, the member must be
+between 18 and 150 years old, inclusive. Dates outside that range return
+`400 INVALID_AGE` and cannot produce a verified profile.
 
 ---
 
@@ -253,10 +289,10 @@ curl -s -X POST $BASE/api/v1/mobile/auth/otp/request \
   -H 'Content-Type: application/json' \
   -d '{"country":"ie","phone":"871234561"}' | jq
 
-# 3. verify → get session token (device_id + platform are required)
+# 3. verify → get session token (application + device_id + platform are required)
 TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
   -H 'Content-Type: application/json' \
-  -d '{"country":"ie","phone":"871234561","code":"000000","device_id":"dev-1","platform":"android"}' \
+  -d '{"country":"ie","phone":"871234561","code":"000000","application":"eastore","device_id":"dev-1","platform":"android"}' \
   | jq -r .token)
 
 # 4. authenticated call
@@ -277,9 +313,12 @@ curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 ### Point conversion progress
 
 `GET /me/card` always includes `points_conversion`. Conversion rules are fixed:
-100 points = EUR 1, a minimum of 400 points (EUR 4) is required, vouchers are issued
-in EUR 10 steps with the sub-euro remainder kept on the balance, and converted
-vouchers stay valid for one year. The block exposes `minimum_points` (400), the
+100 points = 1 unit of the current currency (EUR in IE, GBP in NI), and a minimum
+of 400 points is required. Whole currency units are converted into vouchers of
+up to 10 units each, with a smaller final voucher for the remaining whole units;
+the sub-unit remainder stays on the balance. For example, 1,450 points produces
+vouchers worth 10 and 4, leaving 50 points. Converted vouchers stay valid for
+one year from the conversion date. The block exposes `minimum_points` (400), the
 `points_remaining` to reach it, the current balance value in
 `points_balance_value_cents` (one point = one cent/penny), and `next_conversion_date`
 (`null` when no future date is planned). Conversion dates are global for IE and NI;
@@ -323,10 +362,11 @@ Non-purchase rows return `null`. Never infer this checkout-time value from
 
 `occurred_at` is UTC and comes from the till receipt, not from when the finalize
 call reached Odoo — a till replaying a queued receipt keeps its real time. A
-conversion reports the date Head Office scheduled: a run delayed by downtime
-still shows the planned date, and several missed dates collapse into one entry
-dated by the latest of them. An immediate conversion triggered by an
-administrator has no scheduled date and reports the day it ran.
+conversion uses midnight on the date Head Office scheduled; several missed
+dates collapse into one entry using the latest of them. If the wallet already
+has activity at or after that time, the conversion is timestamped one second
+after its latest entry so the debit follows the activity that funded it. An
+immediate conversion uses the day it ran, with the same ordering rule.
 
 Paging uses an opaque `cursor`, not an offset: new rows land at the top while the
 member scrolls, and an offset would repeat or skip rows across pages. Pass the
@@ -388,6 +428,10 @@ feedback, and show `message` from the `201` response verbatim on success:
 
 ## 8. Communication preferences
 
+The `{application}` in the path must match the app your session was issued to.
+Reading or writing the other app's preferences returns `403
+APPLICATION_MISMATCH` — an Eastore build cannot switch off Polonez push.
+
 Preferences are scoped to the authenticated account and the application path
 value (`eastore` or `polonez`). They are shared by all devices, unchanged when
 the member switches between IE and NI, and independent between the two apps.
@@ -423,17 +467,48 @@ senders must call `loyalty.mobile.preference.communication_allowed()` immediatel
 before delivery; it re-checks both profile verification and the latest value.
 This addon does not currently contain a marketing delivery service. Transactional
 OTP and email-verification messages intentionally bypass marketing preferences.
-At account anonymisation (180 days after deletion), current preferences are
-removed and device identifiers are erased from the retained consent history.
+When an account is permanently deleted, the current preferences and their whole
+consent audit history are removed with it.
 
 ---
 
-## 9. Common errors
+## 9. Push registration
+
+```http
+PUT /api/v1/mobile/me/push-registration
+Authorization: Bearer est_...
+Content-Type: application/json
+
+{ "token": "<FCM registration token>" }
+```
+
+- The body carries **only** the token. Account, app, device and platform come
+  from your session, so nothing else can be spoofed.
+- Call it after login, on every token rotation, and on resume. It is idempotent;
+  an unchanged token seen again shortly after is acknowledged without a write.
+- `DELETE` on the same path stops targeting this install — use it when the OS
+  permission is withdrawn. It is device-local and does **not** flip the
+  account's `push_notifications` preference, so other devices keep working.
+- Registrations are revoked server-side on logout, logout-all, phone change,
+  session eviction and account deletion. Register again once a new session
+  exists.
+- Turning `push_notifications` off does not drop the token: consent is checked
+  at send time, so switching it back on works without a new OS prompt.
+- **`409 REGISTRATION_CONFLICT` means retry, not failure.** FCM can hand the same
+  token to a restored device, and if both installs register it at the same moment
+  one of them loses. Nothing is broken and the session is still valid — just send
+  the same `PUT` again later, on the next resume. Do not sign the user out.
+
+---
+
+## 10. Common errors
 
 | Code | Meaning |
 |---|---|
 | `400` | Bad request (e.g. invalid `country`, malformed phone, missing field) |
 | `401` | Missing / invalid / expired Bearer token (`UNAUTHORIZED`), or signed out by the active-session limit (`SESSION_REVOKED`) |
+| `403` | Account scheduled for deletion (`ACCOUNT_DELETION_PENDING`) — see §14; or a preferences path naming the other app (`APPLICATION_MISMATCH`) — see §8 |
+| `409` | Conflict — a voucher already claimed, or a push token being claimed by another install (`REGISTRATION_CONFLICT`, retry) |
 | `429` | OTP rate limit — wait `retry_after` seconds |
 | `503` | OTP delivery provider unavailable |
 
@@ -443,7 +518,7 @@ the error schemas in `mobile.yaml`.
 
 ---
 
-## 10. Vouchers
+## 11. Vouchers
 
 The app surfaces vouchers; **redemption happens at the till** (Cash Register
 API), not in the app. Money fields are in cents.
@@ -486,7 +561,7 @@ Status lifecycle: `Issued` → `Active` → `Used` / `Expired` / `Revoked`.
 
 | Type | Issued | Audience | Validity |
 |---|---|---|---|
-| `welcome` | once per member, on sign-up completion | member | from receipt, 14 days |
+| `welcome` | once per member per country: on signup, or first switch to a country without a previous welcome voucher | member | from issuance, 14 days |
 | `x_off_y` | at the till on spend thresholds (rules) | anonymous and/or registered | per rule |
 | `birthday` | daily cron around the member's birthday (once/year) | member | birthday window |
 | `individual` | manually from the back office | member | per issuance |
@@ -498,7 +573,7 @@ vouchers; the welcome voucher is usable even before full verification.
 
 ---
 
-## 11. Offers
+## 12. Offers
 
 Promotional offers are country-scoped to the member's `current_country`. The
 backend also returns country-less campaigns/banners that are intended for both
@@ -579,7 +654,7 @@ them with the same API base you use for JSON calls, e.g.
 
 ---
 
-## 12. Stores and opening hours
+## 13. Stores and opening hours
 
 `GET /stores` returns active shops for the member's `current_country`, both
 Polonez and Eastore, ordered by name.
@@ -676,3 +751,72 @@ store from the other country returns `404 NOT_FOUND`.
 
 For shops where no store-specific source was found, the backend currently uses
 `opening_hours_source=default` with `Mon-Sat 10:00-20:00; Sun 11:00-19:00`.
+
+---
+
+## 14. Deleting an account, and taking it back
+
+Deletion is a two-step affair: closing the account is instant, erasing it is not.
+
+### Requesting it
+
+`POST /me/delete` closes the account immediately. Every session, push
+registration and QR token is revoked in that call, so the app must drop its
+token and return to the unauthenticated flow, and push stops arriving on every
+install. The response carries the window:
+
+```json
+{
+  "deleted": true,
+  "requested_at": "2026-06-11T21:43:39Z",
+  "eligible_for_deletion_at": "2026-06-14T21:43:39Z"
+}
+```
+
+Nothing is erased yet. Points, vouchers and history are all still there.
+
+### The restore screen
+
+Logging in with the same number during the window works normally, and
+`/auth/otp/verify` answers with `account_state: "deletion_pending"` plus
+`requested_at` and `eligible_for_deletion_at`. Route that to the restore screen.
+
+The token that comes with it is **restricted**: only `POST /me/delete/cancel`
+and `POST /auth/logout` accept it. Everything else answers
+`403 ACCOUNT_DELETION_PENDING`, with the same two timestamps in
+`error.details` — so an app that cold-starts holding a restricted token can
+draw the screen without a readable profile endpoint.
+
+Two things to get right in the copy:
+
+- Say **"you have until"**, not "will be deleted at". `eligible_for_deletion_at`
+  is when the daily cleanup becomes *allowed* to run, so the real deadline is up
+  to a day later.
+- **Do not hide the restore button when the timer hits zero.** Cancellation keeps
+  working until the cleanup has actually started. Keep offering it until the API
+  refuses.
+
+### Restoring
+
+`POST /me/delete/cancel` brings the account back exactly as it was — points,
+vouchers, history, profile fields and the verified email — and returns the
+profile. No re-login: the same token is an ordinary session from that moment,
+because the restriction came from the account's state, not from the token.
+
+Two races to handle:
+
+- `409 ACCOUNT_DELETION_NOT_PENDING` — already cancelled from another device.
+  Continue to the main screen.
+- `401` — the cleanup won: the account and its sessions are gone. Route to fresh
+  signup.
+
+### After the window
+
+The cleanup erases the account irreversibly and it can never be reactivated.
+Registering the same number afterwards creates a **new** account with a new
+Loyalty ID, empty wallets and none of the previous vouchers or history (it may
+receive a new welcome voucher — that is accepted).
+
+There is no way to tell a returning member from a new one: `/auth/otp/verify`
+simply answers `signup_required`. Nothing is retained to recognise them, by
+design — which is exactly why the deadline belongs on the restore screen.
