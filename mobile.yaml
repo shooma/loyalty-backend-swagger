@@ -22,9 +22,13 @@ info:
 
 servers:
   - url: https://stage.odoo-stage.polonez.dev
-    description: Staging server - canonical mobile prefix
+    description: Stage server (primary) - canonical mobile prefix, sends real SMS
   - url: https://stage.odoo-stage.polonez.dev/odoo
-    description: Staging server - Odoo-compatible prefix
+    description: Stage server (primary) - Odoo-compatible prefix
+  - url: https://preprod.odoo-stage.polonez.dev
+    description: Preprod server - canonical mobile prefix, no real SMS
+  - url: https://preprod.odoo-stage.polonez.dev/odoo
+    description: Preprod server - Odoo-compatible prefix
   - url: https://erp.polonez.ie
     description: Production server - canonical mobile prefix
   - url: https://erp.polonez.ie/odoo
@@ -57,14 +61,19 @@ paths:
       operationId: mobileGetFaq
       summary: Published FAQ for the selected operating country
       description: |
-        Requires polonez_loyalty_mobile_api 18.0.30.0.0 or later (SO20-3147).
+        Requires polonez_loyalty_mobile_api 18.0.31.0.0 or later (SO20-3147).
         Public, including before login. Country is required; there is no fallback.
         Returns a complete published snapshot, ordered categories and questions.
         Draft edits never affect this response until Publish FAQ is selected in Odoo.
         Missing/unpublished FAQ returns 200 with empty categories and null support.
         Reload on entering Help centre and switching countries. Clear previous-country
         content immediately and discard stale responses from earlier country requests.
-        Cache by country and version; a cached version alone does not detect new publications.
+        Store the ETag per country and send it as If-None-Match on reload.
+        A matching validator returns 304 without a body: reuse that country's cached JSON.
+        Cache-Control is public, no-cache: revalidate on every load, including empty states.
+        Draft edits and publishing unchanged content preserve the ETag. Publication changes
+        and unpublishing invalidate it. If-None-Match supports weak tags, lists and *.
+        ETag is exposed through CORS and If-None-Match is allowed in preflight requests.
         Search questions and plain text extracted from answers locally in the app.
         Category icon keys are hints: use a generic help icon for unrecognized keys.
       security: []
@@ -75,13 +84,46 @@ paths:
           schema:
             type: string
             enum: [ie, ni]
+        - in: header
+          name: If-None-Match
+          description: Previously returned ETag for this country's FAQ.
+          schema:
+            type: string
+          example: 'W/"faq-v1-ie-1-3"'
       responses:
         '200':
           description: Published FAQ or an empty state for this country
+          headers:
+            ETag:
+              description: Opaque weak validator scoped to the country and published representation.
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: public, no-cache
+            Vary:
+              schema:
+                type: string
+                example: Origin
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FaqResponse'
+        '304':
+          description: Cached representation is current. No response body; reuse cached JSON for this country.
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: public, no-cache
+            Vary:
+              schema:
+                type: string
+                example: Origin
         '400':
           description: Missing or invalid country (INVALID_COUNTRY)
           content:
@@ -208,10 +250,17 @@ paths:
         response means Twilio accepted the SMS (normally as `queued`), not that
         final handset delivery has already occurred.
 
-        On staging, the following test phones use fixed OTP `000000` and do not
+        `application` picks the brand: the body reads
+        `Your <Brand> verification code is <code>. It expires in 5 minutes.`
+        and the SMS is sent from that brand's registered sender. It does not
+        affect rate limiting, which is keyed on phone and network only.
+
+        On preprod, the following test phones use fixed OTP `000000` and do not
         send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
         `+442800000000` (`country=ni`, `phone=2800000000`),
         `+353870000000` (`country=ie`, `phone=870000000`).
+        The stage stand runs the production Twilio pipeline: any phone outside
+        its own short fixed-code list gets a real, billed SMS.
       operationId: mobileRequestOtp
       requestBody:
         required: true
@@ -225,11 +274,13 @@ paths:
                 value:
                   country: ie
                   phone: "879991001"
+                  application: eastore
               northernIreland:
                 summary: Northern Ireland number
                 value:
                   country: ni
                   phone: "7700 900123"
+                  application: polonez
       responses:
         '200':
           description: OTP created and delivery attempted.
@@ -273,8 +324,9 @@ paths:
         indistinguishable from a number never seen: nothing is retained to
         recognise a returning member, by design.
 
-        On staging, use code `000000` for these fixed-OTP test phones:
-        `+353871234561`, `+442800000000`, `+353870000000`.
+        On preprod, use code `000000` for these fixed-OTP test phones:
+        `+353871234561`, `+442800000000`, `+353870000000`. Stage keeps its own
+        shorter list; every other phone there receives a real SMS.
 
         A profile may hold only a limited number of active sessions (2 by
         default). Issuing a session beyond that limit revokes the least
@@ -871,7 +923,10 @@ paths:
       tags:
         - Mobile - Profile
       summary: Request email verification code
-      description: Sends a 6-digit code to the email currently saved on the profile.
+      description: |
+        Sends a 6-digit code to the email currently saved on the profile. The
+        mail names the brand of the session's own `application`, so it takes no
+        body.
       operationId: mobileRequestEmailVerification
       security:
         - MobileBearerAuth: []
@@ -2074,7 +2129,7 @@ components:
           enum: [ie, ni]
         version:
           type: integer
-          description: Increases on publish/unpublish; zero before first publication.
+          description: Increases when publication changes or is withdrawn; unchanged publication is a no-op. Zero initially.
         published_at:
           type: string
           nullable: true
@@ -2289,9 +2344,17 @@ components:
       required:
         - country
         - phone
+        - application
       properties:
         country:
           $ref: '#/components/schemas/PhoneCountry'
+        application:
+          allOf:
+            - $ref: '#/components/schemas/MobileApplication'
+          description: |
+            Branded app the code is requested from. Required: the SMS names this
+            brand and is sent from that brand's registered sender, and there is
+            no session yet to infer it from.
         phone:
           type: string
           description: |
@@ -3039,8 +3102,10 @@ components:
       description: >-
         Branded app the client was built as. One backend serves both, so the
         session records which app it belongs to: it scopes the active-session
-        limit, device uniqueness and push targeting. Fixed at build time — the
-        app reports the same value on every login.
+        limit, device uniqueness and push targeting, and it selects the brand
+        named in the OTP SMS and verification email along with the sender the
+        SMS goes out from. Fixed at build time — the app reports the same value
+        on every request that takes it.
       enum:
         - eastore
         - polonez

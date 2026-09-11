@@ -17,11 +17,12 @@ on the staging server. The machine-readable contract is the Swagger:
 
 | | |
 |---|---|
-| **Staging base URL** | `https://stage.odoo-stage.polonez.dev` |
+| **Stage base URL** | `https://stage.odoo-stage.polonez.dev` — the stand to develop against |
+| **Preprod base URL** | `https://preprod.odoo-stage.polonez.dev` — secondary, see §3 |
 | **Recommended prefix** | `/api/v1/mobile/...` (canonical) |
 | **Fallback prefix** | `/odoo/api/v1/mobile/...` (temporary compatibility) |
 | **Content type** | `application/json` |
-| **DB selection** | host-based (`dbfilter`), nothing to send — just use the staging host |
+| **DB selection** | host-based (`dbfilter`), nothing to send — just use the stand's host |
 
 > **Use the canonical `/api/v1/mobile/...` prefix** — it's the portable one across
 > environments. The `/odoo/api/v1/mobile/...` prefix is a **temporary fallback**;
@@ -52,11 +53,15 @@ POST /api/v1/mobile/auth/signup/complete  → (new phone only) → session token
 POST /api/v1/mobile/auth/otp/request
 Content-Type: application/json
 
-{ "country": "ie", "phone": "871234561" }
+{ "country": "ie", "phone": "871234561", "application": "eastore" }
 ```
 
 - `country`: `ie` (Ireland → `+353`) or `ni` (Northern Ireland → `+44`). The
   server normalizes `country` + `phone` to E.164 (`+353871234561`).
+- `application`: `eastore` or `polonez`, the same build-time value you send on
+  verify. **Required.** The SMS names this brand and leaves from that brand's
+  registered sender, and there is no session yet to infer it from. A wrong or
+  missing value is `400 INVALID_APPLICATION`; it has no effect on throttling.
 - Response: `{ "expires_in": 300, "retry_after": 60 }`.
 - OTP lifetime: **5 minutes**. Throttling: **1 request / minute** and **5 / hour**
   per phone (plus per-IP caps). Expect `429` if you hammer it.
@@ -67,6 +72,8 @@ Content-Type: application/json
 - The SMS is only valid for the OTP lifetime: if the carrier cannot deliver it
   within those 5 minutes it is dropped, never delivered late. Ask the user to
   request a new code rather than waiting.
+- Body: `Your Eastore verification code is 123456. It expires in 5 minutes.`
+  (`Polonez` for `application=polonez`).
 
 ### 2.2 Verify OTP
 
@@ -146,13 +153,29 @@ next call and must return to the login screen. Two consequences for the app:
 
 ---
 
-## 3. Getting the OTP on STAGING (no real SMS)
+## 3. Getting the OTP on the non-production stands
 
-Staging does **not** send real SMS by default. There are two ways to read the code:
+There are two non-production stands, and they behave differently:
+
+| Stand | Host | OTP delivery |
+|---|---|---|
+| **stage** | `stage.odoo-stage.polonez.dev` | **real Twilio SMS**, plus a short list of fixed-code test phones |
+| **preprod** | `preprod.odoo-stage.polonez.dev` | no real SMS — fixed test phones and the Mailtrap inbox |
+
+**Stage** is the stand to work against: it mirrors production data replicated
+from the production Kafka topics. It also runs the production SMS pipeline, so
+any phone outside its short fixed-code list receives a real, billed SMS and needs
+a real Irish or UK handset. There is no Mailtrap route there. Ask the backend
+team which numbers carry a fixed code. Those phones short-circuit delivery, so
+never use one to sign off the SMS pipeline itself.
+
+**Preprod** is wired into the shared preprod contour together with Eurotrade and
+InvoiceSQL, so use it when a scenario spans those systems. It sends no real SMS,
+and the two options below describe it.
 
 ### Option A — fixed test phones (recommended, self-service)
 
-**Test phones** are configured on staging. When you request an OTP for any of
+**Test phones** are configured on preprod. When you request an OTP for any of
 these exact phones, the code is **fixed** and no SMS is attempted:
 
 | E.164 phone | `country` | `phone` field | OTP |
@@ -177,10 +200,18 @@ verify:   { "country": "ie", "phone": "871234561", "code": "000000", "applicatio
 > add a fresh, non-existent number to `polonez_loyalty_mobile_api.otp_test_phones`.
 > The singular legacy setting `otp_test_phone` is used only when the plural
 > setting is empty.
+>
+> The list takes several phones, separated by commas, semicolons or newlines,
+> and works the same on a stand that sends real SMS — stage keeps a short one
+> for exactly that reason.
+>
+> The backend team manages this from **Settings → Loyalty**, which also shows
+> which transport the stand is currently on and lets every stand except
+> production switch it without a redeploy.
 
 ### Option B — Mailtrap inbox (for any other phone)
 
-For any phone other than the configured test phones, staging delivers the OTP
+For any phone other than the configured test phones, preprod delivers the OTP
 into a **Mailtrap** catch-all inbox (the OTP is emailed to a synthetic
 `<phone-digits>@polonez.dev` address). This lets you exercise the **signup** flow
 with fresh, never-seen numbers and still read the code. Ask the backend team for
@@ -287,7 +318,7 @@ curl -s $BASE/api/v1/mobile/config | jq
 # 2. request OTP for a test phone (no SMS, fixed code 000000)
 curl -s -X POST $BASE/api/v1/mobile/auth/otp/request \
   -H 'Content-Type: application/json' \
-  -d '{"country":"ie","phone":"871234561"}' | jq
+  -d '{"country":"ie","phone":"871234561","application":"eastore"}' | jq
 
 # 3. verify → get session token (application + device_id + platform are required)
 TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
@@ -824,7 +855,7 @@ design — which is exactly why the deadline belongs on the restore screen.
 
 ## FAQ (SO20-3147)
 
-Available after deploying `polonez_loyalty_mobile_api` 18.0.30.0.0 or later.
+Available after deploying `polonez_loyalty_mobile_api` 18.0.31.0.0 or later.
 
 `GET /api/v1/mobile/faq?country=ie|ni` is public and requires an explicit country.
 The `/odoo/api/v1/mobile/faq` compatibility route is also available.
@@ -833,17 +864,31 @@ Each country has its own draft. Edit categories, icons, question/answer order an
 support details; **Publish FAQ** replaces the public snapshot atomically. Saving,
 disabling or deleting draft items does not change the published content. Empty and
 disabled categories and disabled questions are omitted at publication. An empty FAQ
-cannot be published; use **Unpublish** to withdraw it. Version increments automatically.
+cannot be published; use **Unpublish** to withdraw it. Version increments automatically
+when the published content changes or is withdrawn; repeated publication of identical
+content leaves the version and timestamp unchanged. The form indicates unpublished changes.
+Country records display the country name and cannot be deleted; edit or remove individual
+categories/questions, or withdraw the whole publication using **Unpublish**.
 
 The initial import contains 45 questions in five categories from
 `FAQ-app-draft-reference.docx`: Loyalty program, Vouchers, Points, Offers, Account.
 App support is the bottom support block. IE starts unpublished; NI starts empty and
 unpublished. This is draft wording, including euro amounts and app behavior that
 must be reviewed before publication. Contacts are intentionally empty until configured.
-Seed records use `noupdate` so module upgrades preserve editorial changes.
+Initial content is loaded once by the install hook or upgrade migration, with a persistent
+seed marker. The seed XML is not part of the recurring module data list: upgrades preserve
+edits, deletions and published snapshots. Upgrading the original FAQ implementation also
+preserves existing drafts without restoring previously deleted seed questions.
 
 App integration: retain the supplied Help centre and category accordion designs.
-Fetch the entire FAQ on entry and country change; cache keys include country.
+Revalidate the FAQ on entry and country change; cache keys include country.
+Store the JSON response and its `ETag` together. On reload send `If-None-Match` with
+that ETag: `304 Not Modified` has no body and means reuse the cached JSON; `200` replaces
+both JSON and ETag. A changed publication or **Unpublish** produces a new validator.
+Draft edits and publishing unchanged content preserve it. Empty states are cacheable
+with the same revalidation rule. Never use another country's validator or body.
+The response uses `Cache-Control: public, no-cache` and `Vary: Origin`. WebView clients
+can read `ETag` through CORS; preflight allows `If-None-Match`.
 Immediately clear content on country change and ignore older in-flight responses.
 Search question text and the plain text of HTML answers locally across categories.
 Search results should show the category and open the matching question.
