@@ -820,3 +820,35 @@ receive a new welcome voucher — that is accepted).
 There is no way to tell a returning member from a new one: `/auth/otp/verify`
 simply answers `signup_required`. Nothing is retained to recognise them, by
 design — which is exactly why the deadline belongs on the restore screen.
+
+
+## FAQ (SO20-3147)
+
+Available after deploying `polonez_loyalty_mobile_api` 18.0.30.0.0 or later.
+
+`GET /api/v1/mobile/faq?country=ie|ni` is public and requires an explicit country.
+The `/odoo/api/v1/mobile/faq` compatibility route is also available.
+Odoo: Loyalty → Administration → FAQ (system administrators, matching Legal Documents).
+Each country has its own draft. Edit categories, icons, question/answer order and
+support details; **Publish FAQ** replaces the public snapshot atomically. Saving,
+disabling or deleting draft items does not change the published content. Empty and
+disabled categories and disabled questions are omitted at publication. An empty FAQ
+cannot be published; use **Unpublish** to withdraw it. Version increments automatically.
+
+The initial import contains 45 questions in five categories from
+`FAQ-app-draft-reference.docx`: Loyalty program, Vouchers, Points, Offers, Account.
+App support is the bottom support block. IE starts unpublished; NI starts empty and
+unpublished. This is draft wording, including euro amounts and app behavior that
+must be reviewed before publication. Contacts are intentionally empty until configured.
+Seed records use `noupdate` so module upgrades preserve editorial changes.
+
+App integration: retain the supplied Help centre and category accordion designs.
+Fetch the entire FAQ on entry and country change; cache keys include country.
+Immediately clear content on country change and ignore older in-flight responses.
+Search question text and the plain text of HTML answers locally across categories.
+Search results should show the category and open the matching question.
+Render `answer_html` with the app's safe rich-text renderer. Unknown category icons
+use a generic help icon; do not hardcode the five categories from the screenshot.
+Show a clear empty state for empty categories, and separate retry UI for network errors.
+Support email and WhatsApp actions appear only when supplied. The API returns null
+support when unpublished.

@@ -51,6 +51,43 @@ tags:
     description: Authenticated store/map listing for the current country.
 
 paths:
+  /api/v1/mobile/faq:
+    get:
+      tags: [Mobile - Public]
+      operationId: mobileGetFaq
+      summary: Published FAQ for the selected operating country
+      description: |
+        Requires polonez_loyalty_mobile_api 18.0.30.0.0 or later (SO20-3147).
+        Public, including before login. Country is required; there is no fallback.
+        Returns a complete published snapshot, ordered categories and questions.
+        Draft edits never affect this response until Publish FAQ is selected in Odoo.
+        Missing/unpublished FAQ returns 200 with empty categories and null support.
+        Reload on entering Help centre and switching countries. Clear previous-country
+        content immediately and discard stale responses from earlier country requests.
+        Cache by country and version; a cached version alone does not detect new publications.
+        Search questions and plain text extracted from answers locally in the app.
+        Category icon keys are hints: use a generic help icon for unrecognized keys.
+      security: []
+      parameters:
+        - in: query
+          name: country
+          required: true
+          schema:
+            type: string
+            enum: [ie, ni]
+      responses:
+        '200':
+          description: Published FAQ or an empty state for this country
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaqResponse'
+        '400':
+          description: Missing or invalid country (INVALID_COUNTRY)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/mobile/config:
     get:
       tags:
@@ -2028,6 +2065,63 @@ components:
               message: Could not send verification code, try again
 
   schemas:
+    FaqResponse:
+      type: object
+      required: [country, version, published_at, categories, support]
+      properties:
+        country:
+          type: string
+          enum: [ie, ni]
+        version:
+          type: integer
+          description: Increases on publish/unpublish; zero before first publication.
+        published_at:
+          type: string
+          nullable: true
+          format: date-time
+          description: ISO-8601 UTC timestamp, null when unpublished.
+        categories:
+          type: array
+          items:
+            type: object
+            required: [id, title, icon, questions]
+            properties:
+              id:
+                type: integer
+              title:
+                type: string
+              icon:
+                type: string
+                example: loyalty
+              questions:
+                type: array
+                items:
+                  type: object
+                  required: [id, question, answer_html]
+                  properties:
+                    id:
+                      type: integer
+                    question:
+                      type: string
+                    answer_html:
+                      type: string
+                      description: Sanitized HTML, including paragraphs, lists and links.
+        support:
+          type: object
+          nullable: true
+          required: [title, body_html, email, whatsapp]
+          properties:
+            title:
+              type: string
+            body_html:
+              type: string
+            email:
+              type: string
+              nullable: true
+            whatsapp:
+              type: string
+              nullable: true
+              description: International phone number; hide the contact action when null.
     ErrorResponse:
       type: object
       required:
