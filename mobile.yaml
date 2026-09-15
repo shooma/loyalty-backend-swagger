@@ -53,8 +53,6 @@ tags:
     description: Authenticated promotional campaigns, offers, banners, and media.
   - name: Mobile - Stores
     description: Authenticated store/map listing for the current country.
-  - name: Mobile - Notifications
-    description: Authenticated in-app notification history and read state.
 
 paths:
   /api/v1/mobile/faq:
@@ -694,11 +692,9 @@ paths:
       summary: Get communication preferences
       description: |
         Returns account-level communication preferences for the selected app.
-        Users without a stored row receive and persist the defaults: **all three
-        channels enabled**. Consent for them is given by accepting the terms at
-        sign-up rather than by a separate opt-in (SO20-3139), and withdrawing any
-        of them is always available. Values are shared between all devices and
-        are independent for Eastore and Polonez.
+        Existing users without a stored row receive and persist the defaults:
+        push enabled, email newsletter and SMS disabled. Values are shared
+        between all devices and are independent for Eastore and Polonez.
 
         `push_notifications` is the account preference only. The app and push
         delivery service must separately check the target device's OS permission.
@@ -733,23 +729,15 @@ paths:
         old/new values, timestamp, current region, session device/platform, and
         API source. No-op values do not create audit rows.
 
-        **Changed (SO20-3139):** turning a channel on is no longer gated on the
-        profile being verified, and `409 PROFILE_NOT_VERIFIED` is no longer
-        returned. All three start on, so such a gate could only have stopped a
-        member restoring a consent they had withdrawn.
-
-        Consent and deliverability are separate. An unconfirmed email address
-        does not switch the email consent off - it stays on and is the member's
-        to withdraw - but nothing is sent until the address is proved, because an
-        unconfirmed one may belong to somebody else. The phone is already proved
-        by the sign-up OTP, so SMS needs nothing further. Marketing senders must
-        call the Odoo-side `loyalty.mobile.preference.communication_allowed()`
-        gate immediately before delivery to re-check this and the latest value.
-
-        This addon does not currently implement marketing delivery; transactional
-        OTP and email-verification messages intentionally bypass these
-        preferences. When an account is permanently deleted, the current
-        preferences and their whole consent audit history are removed with it.
+        Enabling `email_newsletter` or `receive_sms` requires a fully verified
+        profile. Disabling either channel remains allowed after verification is
+        lost. Marketing senders must call the Odoo-side
+        `loyalty.mobile.preference.communication_allowed()` gate immediately
+        before delivery to re-check verification and the latest value. This addon
+        does not currently implement marketing delivery; transactional OTP and
+        email-verification messages intentionally bypass these preferences. When
+        an account is permanently deleted, the current preferences and their
+        whole consent audit history are removed with it.
 
         The path application must match the session's own app, otherwise the
         call is rejected with `403 APPLICATION_MISMATCH`.
@@ -764,7 +752,7 @@ paths:
               $ref: '#/components/schemas/PreferencesPatchRequest'
             example:
               push_notifications: false
-              email_newsletter: false
+              email_newsletter: true
       responses:
         '200':
           description: Updated communication preferences.
@@ -778,6 +766,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PreferencesForbidden'
+        '409':
+          description: Profile is not verified, so marketing email/SMS cannot be enabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: PROFILE_NOT_VERIFIED
+                  message: A verified profile is required to enable email newsletter or SMS
+                  details:
+                    fields: [email_newsletter]
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1155,175 +1156,6 @@ paths:
           $ref: '#/components/responses/VisitAlreadyRated'
         '422':
           $ref: '#/components/responses/VisitFeedbackInvalid'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/v1/mobile/me/notifications:
-    get:
-      tags:
-        - Mobile - Notifications
-      summary: List notifications
-      description: |
-        The member's notification history for the branded app of the current
-        session, newest first (SO20-3139).
-
-        The feed is the history; push is only a way of being told about it. A
-        card is here whether or not push was allowed, registered or delivered,
-        so a member with push switched off finds exactly the same events by
-        opening this screen. Email and SMS are never used as a fallback for
-        them.
-
-        The app is taken from the session, never from a parameter: a feed is per
-        account *and* per app, and the two brands keep separate histories with
-        independent read state.
-
-        Paginated by an opaque cursor rather than an offset, because new cards
-        arrive at the top while the member scrolls and an offset would then
-        repeat or skip them. Pass the previous response's `next_cursor` for the
-        next page; omit it for the newest page (opening the screen,
-        pull-to-refresh).
-
-        Listing the feed marks nothing as read - only opening a card or
-        `read-all` does. `unread_count` rides along so the list and the bell
-        badge refresh in one request.
-
-        An empty history is `items: []` with a 200. A failure is always a
-        non-200 with an error body, so "empty" never has to be read as "broken".
-
-        Cards are kept for 90 days from creation, read or not; reading does not
-        extend that. Dropping a card never touches the object it points at - a
-        year-long voucher outlives the card announcing it.
-      operationId: mobileListNotifications
-      security:
-        - MobileBearerAuth: []
-      parameters:
-        - in: query
-          name: limit
-          required: false
-          schema:
-            type: integer
-            default: 20
-            minimum: 1
-            maximum: 100
-          description: Page size. Out-of-range values are clamped.
-        - in: query
-          name: cursor
-          required: false
-          schema:
-            type: string
-          description: |
-            Opaque cursor from the previous response's `next_cursor`. Treat it as
-            a black box. A malformed or foreign cursor is a 400 rather than a
-            silent restart from the newest page.
-          example: "482"
-      responses:
-        '200':
-          description: One page of notifications, newest first.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/AccountDeletionPending'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/v1/mobile/me/notifications/unread-count:
-    get:
-      tags:
-        - Mobile - Notifications
-      summary: Get unread notification count
-      description: |
-        The bell badge on its own, for screens that do not load the feed itself.
-
-        Read state is stored server-side, so the count is the same on every
-        device signed into this account and this app.
-      operationId: mobileGetUnreadNotificationCount
-      security:
-        - MobileBearerAuth: []
-      responses:
-        '200':
-          description: Current unread count.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationUnreadCountResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/AccountDeletionPending'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/v1/mobile/me/notifications/{public_id}/read:
-    post:
-      tags:
-        - Mobile - Notifications
-      summary: Mark one notification as read
-      description: |
-        What opening a notification does - tapping the card, or following a push
-        into it.
-
-        Idempotent: re-opening a card keeps the original timestamp, which is the
-        only record of when the member actually saw it. Receiving a push, or
-        merely opening the list, does not come through here and marks nothing.
-
-        Scoped to the caller's own feed for the session's app: a `public_id`
-        belonging to another account, or to this account's other app, is a 404.
-      operationId: mobileMarkNotificationRead
-      security:
-        - MobileBearerAuth: []
-      parameters:
-        - in: path
-          name: public_id
-          required: true
-          schema:
-            type: string
-          description: The notification's `id` from the list response.
-          example: "9d6f2b7c-1f2e-4a51-9f2c-6b0f0f4d8a11"
-      responses:
-        '200':
-          description: The card, now read, and the refreshed count.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationReadResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/AccountDeletionPending'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/v1/mobile/me/notifications/read-all:
-    post:
-      tags:
-        - Mobile - Notifications
-      summary: Mark all notifications as read
-      description: |
-        Clears the badge for the session's app while keeping every card in the
-        history - this is not a delete, and it does not reach the other brand's
-        feed.
-      operationId: mobileMarkAllNotificationsRead
-      security:
-        - MobileBearerAuth: []
-      responses:
-        '200':
-          description: How many cards changed, and the refreshed count.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationReadAllResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/AccountDeletionPending'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3508,149 +3340,6 @@ components:
         qr_payload:
           type: string
           example: "lq1.20260611.FQIMFTM5GZNVQU..."
-
-    NotificationListResponse:
-      type: object
-      required:
-        - items
-        - next_cursor
-        - has_more
-        - unread_count
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/Notification'
-        next_cursor:
-          type: string
-          nullable: true
-          description: Cursor for the next page; null on the last page.
-        has_more:
-          type: boolean
-          description: Whether another page exists.
-        unread_count:
-          type: integer
-          description: Unread cards in this app's feed, for the bell badge.
-
-    NotificationUnreadCountResponse:
-      type: object
-      required:
-        - unread_count
-      properties:
-        unread_count:
-          type: integer
-          example: 3
-
-    NotificationReadResponse:
-      type: object
-      required:
-        - notification
-        - unread_count
-      properties:
-        notification:
-          $ref: '#/components/schemas/Notification'
-        unread_count:
-          type: integer
-
-    NotificationReadAllResponse:
-      type: object
-      required:
-        - marked
-        - unread_count
-      properties:
-        marked:
-          type: integer
-          description: How many cards changed from unread to read.
-        unread_count:
-          type: integer
-          description: Always 0 - every visible card is now read.
-          example: 0
-
-    Notification:
-      type: object
-      required:
-        - id
-        - event_type
-        - title
-        - body
-        - created_at
-        - is_read
-        - read_at
-        - action
-      properties:
-        id:
-          type: string
-          description: |
-            Public identifier of the card, used to mark it read. Not the
-            database id.
-          example: "9d6f2b7c-1f2e-4a51-9f2c-6b0f0f4d8a11"
-        event_type:
-          type: string
-          description: |
-            What happened. The catalogue is fixed by SO20-2892; an app that
-            meets an unfamiliar value should render the title and body and skip
-            any type-specific decoration rather than hide the card.
-          enum:
-            - voucher_welcome
-            - voucher_birthday
-            - voucher_goodwill
-            - voucher_converted
-            - voucher_expiring
-            - points_earned
-            - offer_campaign_new
-            - store_opened
-            - security_new_login
-          example: voucher_welcome
-        title:
-          type: string
-          example: Your welcome voucher is here
-        body:
-          type: string
-          example: "\u20ac3 off your next shop over \u20ac30."
-        created_at:
-          type: string
-          format: date-time
-          description: When the event happened, UTC.
-          example: "2026-09-14T09:00:00Z"
-        is_read:
-          type: boolean
-        read_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: When the member opened it, UTC; null while unread.
-        action:
-          $ref: '#/components/schemas/NotificationAction'
-
-    NotificationAction:
-      type: object
-      nullable: true
-      description: |
-        Where tapping the card leads, or null when the card is informational.
-        An unavailable target (an expired voucher, an unpublished campaign) is a
-        404 from the destination endpoint - show a clear message rather than an
-        empty screen. The card stays in the history either way.
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          enum:
-            - voucher
-            - vouchers
-            - points_history
-            - offer
-            - campaign
-            - store
-            - profile
-            - preferences
-          example: voucher
-        id:
-          type: string
-          description: |
-            Identifier of the target, present only for destinations that address
-            a specific object: a voucher code, or an offer, campaign or store id.
-          example: WELCOME10
 
     PointsHistoryResponse:
       type: object
