@@ -9,6 +9,11 @@ info:
     `get-member` can be called multiple times for the same receipt while the basket
     or selected vouchers change. `finalize-order` must be idempotent by `transaction_id`.
     All monetary amounts in request/response payloads are sent in minor units (cents).
+
+    **BREAKING CHANGE (polonez_loyalty 18.0.30.0.0):** `basket_items` is now
+    required and must be non-empty on both endpoints. Every item must include
+    `LineNumber`, `ProdCode`, `ProdDept`, `ProdGroup1`, `quantity`, and `value`.
+    The classification is required to exclude alcohol and DRS from loyalty.
   version: 1.0.0
   contact:
     name: Mike Shumkov (Polonez.ie)
@@ -41,6 +46,8 @@ paths:
         - The endpoint may be called multiple times for the same receipt as the basket or selected vouchers change
         - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
+        - Department 7/07/007 (alcohol) and department 20 + group 660 (DRS) are excluded from staff and voucher discounts
+        - Vouchers apply in full or not at all; the remaining eligible spend must cover both the minimum purchase and nominal
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
         - The operating country (IE/NI) and currency are determined by the `shop_id`'s shop, not by the member. `points_balance` reflects the member's wallet for that country, and a voucher belonging to the other country is reported as not applied with `reason_code: WRONG_COUNTRY`.
         - Authorization is token-based with scope:
@@ -71,28 +78,28 @@ paths:
               pos_user_id: "12"
               transaction_value: 3000
               basket_items:
-                - line_number: "1"
-                  prod_code: "0000000002823"
+                - LineNumber: "1"
+                  ProdCode: "0000000002823"
                   product_desc: "LUNCHBOX"
                   quantity: 1
                   value: 1500
-                  prod_dept: "39"
-                  prod_group1: "00129"
-                  prod_group2: "00619"
+                  ProdDept: "39"
+                  ProdGroup1: "00129"
+                  ProdGroup2: "00619"
                   vat: 261
-                  promo_amount: 0
-                  reduced_amount: 0
-                - line_number: "2"
-                  prod_code: "0000000001111"
+                  promoamount: 0
+                  reducedamount: 0
+                - LineNumber: "2"
+                  ProdCode: "0000000001111"
                   product_desc: "COFFEE"
                   quantity: 1
                   value: 1500
-                  prod_dept: "39"
-                  prod_group1: "00129"
-                  prod_group2: "00619"
+                  ProdDept: "39"
+                  ProdGroup1: "00129"
+                  ProdGroup2: "00619"
                   vat: 261
-                  promo_amount: 0
-                  reduced_amount: 0
+                  promoamount: 0
+                  reducedamount: 0
       responses:
         '200':
           description: Successful response with member data
@@ -165,6 +172,7 @@ paths:
         - Points are awarded only for verified members (`email`, `phone`, `name`, `surname`, `birthday`, `nationality` are all filled)
         - `messages[]` contains receipt-ready loyalty lines (optional, emitted only when applicable): staff discount, used voucher count/details, and accrual summary
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
+        - Department 7/07/007 (alcohol) and department 20 + group 660 (DRS) contribute no points or voucher issuance spend
         - Temporary (SO20-3031): if `vouchers[]` is absent, the backend consumes the vouchers the
           matching `get-member` call for the same `shop_id` + `pos_id` + `receipt` reported as
           applied, and re-checks their thresholds against the basket that call evaluated. This is
@@ -199,28 +207,28 @@ paths:
               transaction_value: 3000
               change: 0
               basket_items:
-                - line_number: "1"
-                  prod_code: "0000000002823"
+                - LineNumber: "1"
+                  ProdCode: "0000000002823"
                   product_desc: "LUNCHBOX"
                   quantity: 1
                   value: 1500
-                  prod_dept: "39"
-                  prod_group1: "00129"
-                  prod_group2: "00619"
+                  ProdDept: "39"
+                  ProdGroup1: "00129"
+                  ProdGroup2: "00619"
                   vat: 261
-                  promo_amount: 0
-                  reduced_amount: 0
-                - line_number: "2"
-                  prod_code: "0000000001111"
+                  promoamount: 0
+                  reducedamount: 0
+                - LineNumber: "2"
+                  ProdCode: "0000000001111"
                   product_desc: "COFFEE"
                   quantity: 1
                   value: 1500
-                  prod_dept: "39"
-                  prod_group1: "00129"
-                  prod_group2: "00619"
+                  ProdDept: "39"
+                  ProdGroup1: "00129"
+                  ProdGroup2: "00619"
                   vat: 261
-                  promo_amount: 0
-                  reduced_amount: 0
+                  promoamount: 0
+                  reducedamount: 0
       responses:
         '200':
           description: Successful order finalization
@@ -367,17 +375,26 @@ components:
 
     BasketItem:
       type: object
+      description: |
+        CBE receipt line. `value` is the total current line amount, not a unit
+        price: do not multiply it by `quantity` or subtract the informational
+        promotion fields again. Legacy snake-case classification aliases remain
+        accepted during the transition, but new clients must use the CBE names.
+        When both names are present, conflicting values are rejected with
+        `400 BAD_REQUEST` rather than choosing one classification silently.
       required:
-        - line_number
-        - prod_code
+        - LineNumber
+        - ProdCode
+        - ProdDept
+        - ProdGroup1
         - quantity
         - value
       properties:
-        line_number:
+        LineNumber:
           type: string
           description: Line number in the receipt
           example: "1"
-        prod_code:
+        ProdCode:
           type: string
           description: Product code
           example: "0000000002823"
@@ -393,34 +410,36 @@ components:
           example: 2
         value:
           type: integer
-          description: Line item value in cents
+          description: Current total line value in minor units
           minimum: 0
           example: 700
-        prod_dept:
+        ProdDept:
           type: string
-          description: Product department
+          pattern: '^[0-9]+$'
+          description: CBE product department; 7/07/007 identify alcohol
           example: "39"
-        prod_group1:
+        ProdGroup1:
           type: string
-          description: Product group level 1
+          pattern: '^[0-9]+$'
+          description: CBE product group level 1; department 20 plus group 660 identifies DRS
           example: "00129"
-        prod_group2:
+        ProdGroup2:
           type: string
-          description: Product group level 2
+          description: CBE product group level 2
           example: "00619"
         vat:
           type: integer
           description: VAT amount in cents
           minimum: 0
           example: 121
-        promo_amount:
+        promoamount:
           type: integer
-          description: Promotional discount amount in cents
+          description: Informational promotional discount amount in minor units
           minimum: 0
           example: 20
-        reduced_amount:
+        reducedamount:
           type: integer
-          description: Additional discount amount in cents
+          description: Informational additional discount amount in minor units
           minimum: 0
           example: 0
 
@@ -429,7 +448,7 @@ components:
       description: |
         Discount that POS should apply or print on the receipt.
         Only positive discounts must be returned.
-        Voucher and staff discounts are distributed across basket lines proportionally to line value.
+        Voucher and staff discounts are distributed proportionally across eligible basket lines only.
       properties:
         line_number:
           type: string
@@ -478,7 +497,8 @@ components:
           type: string
           description: >-
             Machine-readable reason why the voucher was not applied. Common values:
-            `LOW_PURCHASE_AMOUNT`, `DISCOUNT_CAP_REACHED`, `NOT_STARTED`,
+            `LOW_PURCHASE_AMOUNT`, `ALCOHOL_EXCLUDED`, `DRS_EXCLUDED`,
+            `DISCOUNT_CAP_REACHED`, `NOT_STARTED`,
             `ALREADY_USED`, `VOUCHER_EXPIRED`, `VOUCHER_REVOKED`, `VOUCHER_NOT_FOUND`,
             `MEMBER_MISMATCH`, `MEMBER_REQUIRED`, `WRONG_COUNTRY` (voucher belongs to
             the other country than the shop).
@@ -492,14 +512,26 @@ components:
           description: Additional spend required for voucher eligibility, in cents
           minimum: 0
           example: 1300
-        excluded_categories:
-          type: array
-          description: Categories that prevented voucher eligibility, when applicable
-          items:
-            type: string
-          example:
-            - "tobacco"
-            - "alcohol"
+        alcohol_amount:
+          type: integer
+          description: Alcohol amount excluded from loyalty, in minor units
+          minimum: 0
+          example: 2750
+        deposit_amount:
+          type: integer
+          description: DRS deposit amount excluded from loyalty, in minor units
+          minimum: 0
+          example: 200
+        excluded_amount:
+          type: integer
+          description: Total alcohol and DRS amount excluded from loyalty, in minor units
+          minimum: 0
+          example: 2950
+        eligible_amount:
+          type: integer
+          description: Remaining amount available when this voucher was evaluated, in minor units
+          minimum: 0
+          example: 0
 
     IssuedVoucher:
       type: object
@@ -547,6 +579,7 @@ components:
         - receipt
         - pos_id
         - transaction_value
+        - basket_items
       properties:
         qr_code:
           type: string
@@ -590,7 +623,8 @@ components:
           example: 1400
         basket_items:
           type: array
-          description: List of items in the basket
+          description: Non-empty list of current CBE receipt lines
+          minItems: 1
           items:
             $ref: '#/components/schemas/BasketItem'
 
@@ -669,6 +703,7 @@ components:
         - pos_id
         - transaction_id
         - transaction_value
+        - basket_items
       properties:
         qr_code:
           type: string
@@ -729,7 +764,8 @@ components:
             $ref: '#/components/schemas/Tender'
         basket_items:
           type: array
-          description: List of items in the basket
+          description: Non-empty list of final CBE receipt lines
+          minItems: 1
           items:
             $ref: '#/components/schemas/BasketItem'
 
