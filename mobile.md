@@ -530,6 +530,59 @@ Content-Type: application/json
   one of them loses. Nothing is broken and the session is still valid — just send
   the same `PUT` again later, on the next resume. Do not sign the user out.
 
+### What arrives on the device
+
+```json
+{
+  "notification": { "title": "…", "body": "…" },
+  "data": {
+    "schema_version": "1",
+    "notification_id": "7d5c5e69-7b40-4e5f-bdb3-92795fbd10bb",
+    "event_type": "voucher_welcome",
+    "action": "vouchers",
+    "action_ref": "",
+    "application": "eastore"
+  }
+}
+```
+
+- Every value in `data` is a **string** — FCM allows nothing else.
+- `action` says which screen to open. `action_ref` is an optional safe
+  identifier for that screen; today it is always empty.
+
+  | `action` | Expected screen |
+  |---|---|
+  | `vouchers` | voucher list |
+  | `profile` | profile / account |
+  | `home` | home |
+
+- **Unknown `action`, or a `schema_version` you do not recognise → open home.**
+  The backend will add actions as new events ship, and an older build must not
+  break on one it has never heard of.
+- **De-duplicate on `notification_id` yourself.** Delivery is *at least once*:
+  the same notification can arrive twice, most often when a send succeeded but
+  its response was lost and the backend retried. The payload carries no collapse
+  identifier, so nothing tells the OS to replace the first copy — keep the ids
+  you have already handled and drop a repeat. This is deliberate while the
+  pipeline is being brought up: a collapse identifier would make two deliveries
+  look like one and mask the difference between a repeat and a push that never
+  arrived. We expect to add one once delivery is trusted; it would only ever
+  collapse a notification with itself, never one with another.
+- No redeem codes, amounts, names, phone numbers or e-mail addresses are ever
+  put in a payload — it shows on a lock screen. A voucher push opens the list;
+  fetch the detail through the API as usual.
+- `application` tells you which branded app the message was meant for. Ignore a
+  payload whose value is not your own build.
+
+> The `event_type` list is still growing and the action names are agreed for now
+> rather than frozen — say so if one stops fitting the app. Renaming is free
+> until a build is in the stores.
+
+**Testing before any event exists.** The backend can send a push to a chosen
+install on request, with `event_type: "test"` and `action: "home"`. Use it to
+develop the tap router without waiting for a real event: ask the backend team to
+fire one at your device.
+
 ---
 
 ## 10. Common errors
