@@ -853,6 +853,16 @@ paths:
         irreversibly and it can never be reactivated. Registering the same
         number afterwards creates a new account with a new Loyalty ID and none
         of the previous points, vouchers or history.
+
+        If the member's email address is **confirmed**, they are sent a
+        "Your Polonez & Eastore Club Account Deletion Request" email naming the
+        72-hour window and telling them to sign in again to cancel. It names no
+        screen or button, so this flow can be redrawn without stranding the mail
+        on a control that no longer exists. An unconfirmed or absent address is
+        never written to, no SMS is sent about a deletion, and nothing further
+        is sent once the account is erased. The mail is best-effort: a mail
+        server that is down does not turn a successful request into an error, so
+        the app must not treat the `200` as proof that anything was delivered.
       operationId: mobileDeleteMe
       security:
         - MobileBearerAuth: []

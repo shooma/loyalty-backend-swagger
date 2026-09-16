@@ -806,6 +806,18 @@ install. The response carries the window:
 
 Nothing is erased yet. Points, vouchers and history are all still there.
 
+A member whose email address is **confirmed** (`is_email_verified`) is emailed
+right here — subject *Your Polonez & Eastore Club Account Deletion Request* —
+naming the 72-hour window and telling them to open the app and sign in again to
+cancel. It deliberately names no screen and no button, so redrawing this flow
+does not strand the mail on a control that no longer exists; keep it that way if
+you ever touch the copy. An unconfirmed or absent address gets nothing: that
+address was never proved to belong to the member. No SMS is sent about a
+deletion either, and no further mail goes out once the account is actually
+erased. The mail is best-effort and does not gate the response, so a `200` here
+is not a promise that anything was delivered — the app should still show its own
+confirmation.
+
 ### The restore screen
 
 Logging in with the same number during the window works normally, and
