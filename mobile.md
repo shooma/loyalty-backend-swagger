@@ -480,11 +480,19 @@ returns these defaults:
 }
 ```
 
+Email and SMS start off and require an explicit opt-in from the member.
+Accepting the terms does not enable them. Push keeps its existing enabled
+default. Withdrawing any channel remains available.
+
 `PATCH` accepts one or more boolean fields and returns the same complete shape.
 Unknown fields, non-booleans, and an empty body are rejected with `400`.
-Enabling `email_newsletter` or `receive_sms` for an unverified profile returns
-`409 PROFILE_NOT_VERIFIED` with the blocked fields in `error.details.fields`;
-disabling either field is always allowed.
+
+**Changed (SO20-3139):** turning a channel on is no longer gated on the profile
+being verified, and `409 PROFILE_NOT_VERIFIED` is no longer returned. Consent and
+deliverability are separate: an unconfirmed email address leaves the email
+consent unchanged — it is the member's choice — but nothing is sent until the
+address is proved. The phone is already proved by the sign-up OTP, so SMS needs
+nothing further.
 
 `push_notifications` is the account-level preference. The mobile app must still
 request/check the current device's OS notification permission, and the sender
@@ -495,7 +503,7 @@ another device's permission.
 Every effective change is audited server-side with old/new values, app, member,
 time, current IE/NI region, session device/platform, and source. Marketing
 senders must call `loyalty.mobile.preference.communication_allowed()` immediately
-before delivery; it re-checks both profile verification and the latest value.
+before delivery; it re-checks deliverability and the latest value.
 This addon does not currently contain a marketing delivery service. Transactional
 OTP and email-verification messages intentionally bypass marketing preferences.
 When an account is permanently deleted, the current preferences and their whole
