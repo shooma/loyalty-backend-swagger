@@ -5,7 +5,7 @@ info:
     Public REST API for the Polonez & Eastore loyalty mobile app.
 
     The API is separate from the cash-register/POS loyalty API. It covers app
-    configuration, legal documents, phone OTP login/signup, profile lifecycle,
+    configuration, app documents, phone OTP login/signup, profile lifecycle,
     digital loyalty card QR tokens, points history, and session management.
 
     All endpoints are registered on both URL prefixes:
@@ -40,7 +40,7 @@ servers:
 
 tags:
   - name: Mobile - Public
-    description: Public app configuration and legal content.
+    description: Public app configuration, documents and FAQ.
   - name: Mobile - Auth
     description: OTP login/signup and mobile session lifecycle.
   - name: Mobile - Profile
@@ -113,37 +113,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/FaqResponse'
         '304':
-          description: Cached representation is current. No response body; reuse cached JSON for this country.
-          headers:
-            ETag:
-              schema:
-                type: string
-            Cache-Control:
-              schema:
-                type: string
-                example: public, no-cache
-            Vary:
-              schema:
-                type: string
-                example: Origin
+          $ref: '#/components/responses/NotModified'
         '400':
-          description: Missing or invalid country (INVALID_COUNTRY)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InvalidCountry'
+  /api/v1/mobile/about:
+    get:
+      tags: [Mobile - Public]
+      operationId: mobileGetAbout
+      summary: Published About Loyalty Program content for the selected operating country
+      description: |
+        Requires polonez_loyalty_mobile_api 18.0.36.0.0 or later (SO20-3175).
+        There is no About screen in the app yet: More > About Loyalty Program and the
+        Home banner's More info button both open the FAQ today (checked against
+        ngt/loyalty-app@main). This endpoint is the content for the screen that
+        SO20-3181 adds.
+        Public, including before login. Shares the app-document contract described
+        under the AppDocument response: mandatory country, empty state, revalidation.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CountryRequiredQueryParam'
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
+      responses:
+        '200':
+          $ref: '#/components/responses/AppDocument'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/InvalidCountry'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/mobile/config:
     get:
       tags:
         - Mobile - Public
       summary: Get public app configuration
       description: |
-        Returns welcome-voucher display information, legal document versions,
-        and dropdown options needed by the app before login.
+        Returns welcome-voucher display information and the dropdown options the
+        app needs before login.
 
         Scoped to the operating country via `?country=ie|ni` (default `ie`): the
-        welcome voucher and legal versions are the selected country's, and the
-        welcome amount is labelled in that country's currency (IE→EUR, NI→GBP).
+        welcome voucher is the selected country's, and its amount is labelled in
+        that country's currency (IE→EUR, NI→GBP).
+
+        Changed in polonez_loyalty_mobile_api 18.0.36.0.0 (SO20-3175): the `legal`
+        block with the Terms and Privacy version strings is gone. Decide whether to
+        re-fetch a document from its ETag instead - it is derived from the content,
+        whereas `version` is typed by hand in Odoo and an editor who left it alone
+        made this block claim nothing had changed. The version is still returned
+        with the document itself.
       operationId: mobileGetConfig
       parameters:
         - $ref: '#/components/parameters/CountryQueryParam'
@@ -160,11 +178,6 @@ paths:
                   min_purchase_cents: 2500
                   currency: EUR
                   label: "€5 off €25"
-                legal:
-                  terms:
-                    version: "2026-06-draft"
-                  privacy:
-                    version: "2026-06-draft"
                 countries:
                   - value: ireland
                     label: Ireland
@@ -180,59 +193,51 @@ paths:
 
   /api/v1/mobile/legal/terms:
     get:
-      tags:
-        - Mobile - Public
-      summary: Get Terms & Conditions
-      description: |
-        Returns the published Terms & Conditions for the operating country
-        (`?country=ie|ni`, default `ie`).
+      tags: [Mobile - Public]
       operationId: mobileGetTerms
+      summary: Published Terms & Conditions for the selected operating country
+      description: |
+        Changed in polonez_loyalty_mobile_api 18.0.36.0.0 (SO20-3175): `country` became
+        required, an unpublished country now answers 200 with a null document instead of
+        404 LEGAL_DOCUMENT_NOT_FOUND, and the response is cacheable.
+        Public, including before login. Shares the app-document contract described
+        under the AppDocument response: mandatory country, empty state, revalidation.
+      security: []
       parameters:
-        - $ref: '#/components/parameters/CountryQueryParam'
+        - $ref: '#/components/parameters/CountryRequiredQueryParam'
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
       responses:
         '200':
-          description: Published Terms & Conditions document.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LegalDocument'
-              example:
-                doc_type: terms
-                title: Polonez & Eastore Club — Terms & Conditions
-                version: "2026-06-draft"
-                body_html: "<div><h2>Terms & Conditions</h2><p>...</p></div>"
-                updated_at: "2026-06-11T21:00:00Z"
-        '404':
-          $ref: '#/components/responses/LegalDocumentNotFound'
+          $ref: '#/components/responses/AppDocument'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/InvalidCountry'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /api/v1/mobile/legal/privacy:
     get:
-      tags:
-        - Mobile - Public
-      summary: Get Privacy Policy
-      description: |
-        Returns the published Privacy Policy for the operating country
-        (`?country=ie|ni`, default `ie`).
+      tags: [Mobile - Public]
       operationId: mobileGetPrivacy
+      summary: Published Privacy Policy for the selected operating country
+      description: |
+        Changed in polonez_loyalty_mobile_api 18.0.36.0.0 (SO20-3175): `country` became
+        required, an unpublished country now answers 200 with a null document instead of
+        404 LEGAL_DOCUMENT_NOT_FOUND, and the response is cacheable.
+        Public, including before login. Shares the app-document contract described
+        under the AppDocument response: mandatory country, empty state, revalidation.
+      security: []
       parameters:
-        - $ref: '#/components/parameters/CountryQueryParam'
+        - $ref: '#/components/parameters/CountryRequiredQueryParam'
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
       responses:
         '200':
-          description: Published Privacy Policy document.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LegalDocument'
-              example:
-                doc_type: privacy
-                title: Polonez & Eastore Club — Privacy Policy
-                version: "2026-06-draft"
-                body_html: "<div><h2>Privacy Policy</h2><p>...</p></div>"
-                updated_at: "2026-06-11T21:00:00Z"
-        '404':
-          $ref: '#/components/responses/LegalDocumentNotFound'
+          $ref: '#/components/responses/AppDocument'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '400':
+          $ref: '#/components/responses/InvalidCountry'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2041,6 +2046,26 @@ components:
         $ref: '#/components/schemas/OperatingCountry'
       example: ie
 
+    CountryRequiredQueryParam:
+      name: country
+      in: query
+      required: true
+      description: >-
+        Operating country the content is scoped to (`ie` = Ireland, `ni` =
+        Northern Ireland). Required: there is no fallback between countries.
+      schema:
+        $ref: '#/components/schemas/OperatingCountry'
+      example: ie
+
+    IfNoneMatchHeader:
+      name: If-None-Match
+      in: header
+      required: false
+      description: Previously returned ETag for this country's content.
+      schema:
+        type: string
+      example: 'W/"about-v1-ie-3f2a91c4d5e60718"'
+
   responses:
     BadRequest:
       description: Invalid request payload or business validation error.
@@ -2262,8 +2287,79 @@ components:
                   details:
                     field: comment
                     max_chars: 1000
-    LegalDocumentNotFound:
-      description: Requested legal document is not published.
+    AppDocument:
+      description: |
+        Published document, or the empty state when this country has none.
+
+        The contract is identical for Terms & Conditions, the Privacy Policy and
+        About Loyalty Program:
+        Country is required; there is no fallback, so a country with nothing
+        published never shows the other country's text.
+        Render `body_html` as-is, preserving headings, paragraphs, lists and links.
+        Reload on entering the screen and on switching countries; clear previous-country
+        content immediately and discard stale responses from earlier country requests.
+        Store the ETag per country and send it as If-None-Match on reload.
+        A matching validator returns 304 without a body: reuse that country's cached JSON.
+        The validator follows the served content, not the `version` label, so any
+        backoffice edit reaches the app on the next reload without a release.
+        Cache-Control is public, no-cache: revalidate on every load, including empty states.
+        ETag is exposed through CORS and If-None-Match is allowed in preflight requests.
+      headers:
+        ETag:
+          description: Opaque weak validator scoped to the document and country.
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            example: public, no-cache
+        Vary:
+          schema:
+            type: string
+            example: Origin
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppDocument'
+          examples:
+            published:
+              summary: Published document
+              value:
+                doc_type: terms
+                country: ie
+                title: Polonez & Eastore Club - Terms & Conditions
+                version: "2026-06-draft"
+                body_html: "<div><h2>Terms & Conditions</h2><p>...</p></div>"
+                updated_at: "2026-06-11T21:00:00Z"
+            empty:
+              summary: Nothing published for this country
+              value:
+                doc_type: terms
+                country: ni
+                title: null
+                version: null
+                body_html: null
+                updated_at: null
+
+    NotModified:
+      description: >-
+        Cached representation is current. No response body; reuse the cached JSON
+        for this country.
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            example: public, no-cache
+        Vary:
+          schema:
+            type: string
+            example: Origin
+
+    InvalidCountry:
+      description: Missing or invalid country (INVALID_COUNTRY).
       content:
         application/json:
           schema:
@@ -2271,8 +2367,8 @@ components:
           example:
             status: false
             error:
-              code: LEGAL_DOCUMENT_NOT_FOUND
-              message: No published terms document
+              code: INVALID_COUNTRY
+              message: country must be ie or ni
     RateLimit:
       description: Request rate limit reached.
       content:
@@ -2396,7 +2492,6 @@ components:
       type: object
       required:
         - welcome_voucher
-        - legal
         - countries
         - genders
         - feedback
@@ -2405,20 +2500,6 @@ components:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/WelcomeVoucher'
-        legal:
-          type: object
-          required:
-            - terms
-            - privacy
-          properties:
-            terms:
-              nullable: true
-              allOf:
-                - $ref: '#/components/schemas/LegalVersion'
-            privacy:
-              nullable: true
-              allOf:
-                - $ref: '#/components/schemas/LegalVersion'
         countries:
           type: array
           items:
@@ -2484,15 +2565,6 @@ components:
           type: string
           example: "€5 off €25"
 
-    LegalVersion:
-      type: object
-      required:
-        - version
-      properties:
-        version:
-          type: string
-          example: "2026-06-draft"
-
     Option:
       type: object
       required:
@@ -2504,30 +2576,39 @@ components:
         label:
           type: string
 
-    LegalDocument:
+    AppDocument:
       type: object
-      required:
-        - doc_type
-        - title
-        - version
-        - body_html
+      required: [doc_type, country, title, version, body_html, updated_at]
+      description: >-
+        One country's Terms & Conditions, Privacy Policy or About Loyalty Program.
+        The three share this shape; the content fields are null when that country
+        has nothing published, which is the app's empty state.
       properties:
         doc_type:
           type: string
-          enum:
-            - terms
-            - privacy
+          enum: [terms, privacy, about]
+          description: Echo of the requested document, for matching late responses.
+        country:
+          type: string
+          enum: [ie, ni]
+          description: Echo of the requested country, for matching late responses.
         title:
           type: string
+          nullable: true
+          description: Screen title. Null when nothing is published for this country.
         version:
           type: string
+          nullable: true
+          description: Editorial label set in Odoo. Informational - cache on the ETag, not on this.
         body_html:
           type: string
-          description: HTML rendered as-is by the mobile app.
+          nullable: true
+          description: Sanitized HTML rendered as-is. Null when nothing is published.
         updated_at:
           type: string
-          format: date-time
           nullable: true
+          format: date-time
+          description: ISO-8601 UTC timestamp of the last backoffice edit.
 
     OtpRequest:
       type: object

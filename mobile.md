@@ -259,9 +259,10 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 ### Public (no auth)
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/mobile/config` | Welcome voucher, legal doc versions, country/gender dropdowns (call before login). `?country=ie\|ni` (default `ie`) |
-| GET | `/api/v1/mobile/legal/terms` | Terms & Conditions HTML. `?country=ie\|ni` (default `ie`) |
-| GET | `/api/v1/mobile/legal/privacy` | Privacy Policy HTML. `?country=ie\|ni` (default `ie`) |
+| GET | `/api/v1/mobile/config` | Welcome voucher, country/gender dropdowns, feedback rules (call before login). `?country=ie\|ni` (default `ie`) |
+| GET | `/api/v1/mobile/legal/terms` | Terms & Conditions title + HTML. `?country=ie\|ni` **required** |
+| GET | `/api/v1/mobile/legal/privacy` | Privacy Policy title + HTML. `?country=ie\|ni` **required** |
+| GET | `/api/v1/mobile/about` | About Loyalty Program title + HTML. `?country=ie\|ni` **required** |
 | GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
 
 ### Auth (no token)
@@ -999,3 +1000,47 @@ These event producers do not send push, email or SMS. Store-opening events await
 an explicit opening lifecycle and location targeting; shop directory updates do
 not generate them. See the core addon's `doc/notification-producers.md` for the
 event/source mapping.
+
+## App documents: Terms, Privacy, About Loyalty Program (SO20-3175)
+
+Available after deploying `polonez_loyalty_mobile_api` 18.0.36.0.0 or later.
+
+`GET /api/v1/mobile/legal/terms`, `/legal/privacy` and `/about` are public and share
+one contract; the `/odoo/api/v1/mobile/...` compatibility routes are also available.
+`/about` is new. The app has no About screen yet — More → About Loyalty Program and
+the Home banner's **More info** both open the FAQ (checked against
+`ngt/loyalty-app@main`) — so this is the content for the screen SO20-3181 adds, not a
+replacement for text already shipped.
+
+**Two breaking changes for the legal endpoints in this release.** `country` is now
+required: calling them without it returns `400 INVALID_COUNTRY` instead of silently
+serving the Irish text. A country with nothing published now returns `200` with
+`title`, `version`, `body_html` and `updated_at` all null instead of
+`404 LEGAL_DOCUMENT_NOT_FOUND`; that error code no longer exists. Show the empty state
+for a null document, and keep separate retry UI for network errors.
+
+The response also echoes `doc_type` and `country`, so a response arriving after a
+country switch can be recognised as stale and dropped.
+
+Odoo: Loyalty → Administration → **Legal Documents** (terms, privacy) and **About
+Loyalty Program**, both for system administrators. Each country has its own document —
+title plus rich text — and a saved edit is live: there is no separate publish step.
+Untick **Active** to withdraw a country's document. All three documents ship seeded for
+both countries; the texts are working drafts pending review, and `version` is a
+free-text editorial label with no effect on caching.
+
+App integration: render `body_html` with the app's safe rich-text renderer, preserving
+headings, paragraphs, lists and links. Revalidate on entering the screen and on country
+change; cache keys include country. Store the JSON response and its `ETag` together and
+send `If-None-Match` on reload: `304 Not Modified` has no body and means reuse the cached
+JSON; `200` replaces both JSON and ETag. The validator follows the content itself, so any
+backoffice edit produces a new one. The response uses `Cache-Control: public, no-cache`
+and `Vary: Origin`; WebView clients can read `ETag` through CORS and preflight allows
+`If-None-Match`. Immediately clear content on country change and ignore older in-flight
+responses — there is no fallback to the other country.
+
+**`GET /config` no longer returns the `legal` block.** Its `terms.version` /
+`privacy.version` hint existed so the app could decide whether to re-fetch a document
+without downloading it; the ETag answers that better, because it follows the content
+while `version` is typed by hand in Odoo — an edit that left it alone made the hint
+claim nothing had changed. The version itself is still returned with the document.
