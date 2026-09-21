@@ -1187,6 +1187,15 @@ paths:
         account *and* per app, and the two brands keep separate histories with
         independent read state.
 
+        Voucher and eligible purchase events are recorded in both branded feeds;
+        a sign-in event belongs only to the session's app. Campaign publications
+        are materialized on feed/badge access using their original event date
+        and frozen text, subject to the campaign's app and country audience.
+        Country switches preserve pending old-market announcements in both feeds
+        and exclude existing targeted publications of the new market.
+        Existing cards remain visible after a country switch. These producers
+        do not send push; delivery is a separate integration.
+
         Paginated by an opaque cursor rather than an offset, because new cards
         arrive at the top while the member scrolls and an offset would then
         repeat or skip them. Pass the previous response's `next_cursor` for the
@@ -1249,6 +1258,9 @@ paths:
       summary: Get unread notification count
       description: |
         The bell badge on its own, for screens that do not load the feed itself.
+
+        Includes eligible campaign publications even when the member has not
+        opened the feed yet. Reading the badge does not mark any card read.
 
         Read state is stored server-side, so the count is the same on every
         device signed into this account and this app.

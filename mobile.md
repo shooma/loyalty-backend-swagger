@@ -972,3 +972,30 @@ use a generic help icon; do not hardcode the five categories from the screenshot
 Show a clear empty state for empty categories, and separate retry UI for network errors.
 Support email and WhatsApp actions appear only when supplied. The API returns null
 support when unpublished.
+
+## Notification centre events
+
+Use `GET /api/v1/mobile/me/notifications` for the feed and
+`GET /api/v1/mobile/me/notifications/unread-count` for the badge. Both resolve
+the branded app from the Bearer session. A successful sign-in creates a
+`security_new_login` card in that app; validation/refresh does not create another.
+
+Welcome, birthday, goodwill and converted vouchers create cards immediately.
+Eligible purchases (15.00–24.99 in the wallet's currency, with positive points)
+and voucher expiry reminders also appear without push consent or a registered
+device. These personal loyalty events appear in both branded feeds, with
+independent read state. Claiming an existing printed voucher is not issuance.
+
+Campaign publications keep their original text and event timestamp and are
+materialized when reading the feed or badge. The campaign's app target and
+country determine eligibility. Switching country preserves pending old-market
+announcements in both feeds and excludes existing announcements of the new
+market; existing cards remain visible across country
+switches. `POST /api/v1/mobile/me/notifications/read-all` includes pending
+campaign publications too. Late materialization does not renew the 90-day
+retention. An unavailable campaign target must be handled gracefully by the app.
+
+These event producers do not send push, email or SMS. Store-opening events await
+an explicit opening lifecycle and location targeting; shop directory updates do
+not generate them. See the core addon's `doc/notification-producers.md` for the
+event/source mapping.
