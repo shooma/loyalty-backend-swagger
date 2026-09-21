@@ -343,13 +343,15 @@ curl -s $BASE/api/v1/mobile/offers -H "Authorization: Bearer $TOKEN" | jq
 
 ### Point conversion progress
 
-`GET /me/card` always includes `points_conversion`. Conversion rules are fixed:
-100 points = 1 unit of the current currency (EUR in IE, GBP in NI), and a minimum
-of 400 points is required. Whole currency units are converted into vouchers of
-up to 10 units each, with a smaller final voucher for the remaining whole units;
-the sub-unit remainder stays on the balance. For example, 1,450 points produces
-vouchers worth 10 and 4, leaving 50 points. Converted vouchers stay valid for
-one year from the conversion date. The block exposes `minimum_points` (400), the
+`GET /me/card` always includes `points_conversion`. 100 points = 1 unit of the
+current currency (EUR in IE, GBP in NI), and a minimum balance is required before
+anything converts (500 points by default). Whole currency units are converted into
+vouchers of up to 10 units each by default, with a smaller final voucher for the
+remaining whole units; the sub-unit remainder stays on the balance. For example,
+1,450 points produces vouchers worth 10 and 4, leaving 50 points. Both bounds are
+configured in Odoo (Settings > Loyalty) and can change, so read the minimum from
+the response rather than hardcoding it. Converted vouchers stay valid for
+one year from the conversion date. The block exposes `minimum_points`, the
 `points_remaining` to reach it, the current balance value in
 `points_balance_value_cents` (one point = one cent/penny), and `next_conversion_date`
 (`null` when no future date is planned). Conversion dates are global for IE and NI;

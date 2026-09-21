@@ -3470,8 +3470,9 @@ components:
           minimum: 1
           description: >-
             Minimum wallet balance required before any conversion runs
-            (fixed at 400 points = EUR 4).
-          example: 400
+            (configurable, 500 points = EUR 5 by default). Always read this
+            value instead of hardcoding it.
+          example: 500
         points_remaining:
           type: integer
           minimum: 0
