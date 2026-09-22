@@ -996,7 +996,10 @@ switches. `POST /api/v1/mobile/me/notifications/read-all` includes pending
 campaign publications too. Late materialization does not renew the 90-day
 retention. An unavailable campaign target must be handled gracefully by the app.
 
-These event producers do not send push, email or SMS. Store-opening events await
+Recording a card and sending a push are separate steps: the card is written
+whatever the member's consent, devices or delivery outcome. Push itself is off
+by default and goes nowhere yet, because the shared message transport is still a
+stub. Email and SMS are not sent for these events at all. Store-opening events await
 an explicit opening lifecycle and location targeting; shop directory updates do
 not generate them. See the core addon's `doc/notification-producers.md` for the
 event/source mapping.
