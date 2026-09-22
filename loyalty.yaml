@@ -47,7 +47,14 @@ paths:
         - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Department 7/07/007 (alcohol) and department 20 + group 660 (DRS) are excluded from staff and voucher discounts
-        - Vouchers apply in full or not at all; the remaining eligible spend must cover both the minimum purchase and nominal
+        - Vouchers apply in full or not at all; a discount voucher needs `max(minimum purchase, nominal)` of remaining eligible spend
+        - Vouchers funded from a member's points wallet are the member's own money, not a shop discount: they ignore minimum-purchase thresholds, do not consume the qualifying spend other vouchers are measured against, and are not limited by the maximum basket discount
+        - No voucher of any kind is ever spent on alcohol or DRS: the value of all applied vouchers together never exceeds the eligible lines, so an excluded line is always paid for in full. This binds wallet vouchers too, so a wallet voucher does reduce what is left for other vouchers to discount
+        - Every applied voucher must leave at least the configured minimum amount payable on the order (default 5 cents/pence, configurable from 0 to 100; 0 switches the floor off and does allow a basket to be paid entirely with vouchers). The floor is measured against the whole order, alcohol and DRS included, since the customer pays for those lines in full
+        - The order the cashier scans voucher codes in does not affect the result: the backend weighs every combination of the applicable vouchers and applies the one worth most to the customer. At most 12 vouchers are weighed per receipt; anything past that is reported as not applied
+        - `vouchers` is cumulative: every call must carry all codes selected for this receipt so far; repeated codes are deduplicated
+        - Send `get-member` the **gross** basket: the backend subtracts the loyalty discounts itself, and an already-discounted basket understates the eligible spend
+        - `discount_total` includes vouchers funded from the member's points wallet, which are not limited by the maximum basket discount, so it may exceed that percentage of the basket
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
         - The operating country (IE/NI) and currency are determined by the `shop_id`'s shop, not by the member. `points_balance` reflects the member's wallet for that country, and a voucher belonging to the other country is reported as not applied with `reason_code: WRONG_COUNTRY`.
         - Authorization is token-based with scope:
@@ -173,6 +180,9 @@ paths:
         - `messages[]` contains receipt-ready loyalty lines (optional, emitted only when applicable): staff discount, used voucher count/details, and accrual summary
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Department 7/07/007 (alcohol) and department 20 + group 660 (DRS) contribute no points or voucher issuance spend
+        - Voucher eligibility is re-evaluated here by the same rules as on `get-member` (see above),
+          against the basket sent to this call. `scanned_vouchers[].applied` is therefore what the
+          receipt reflects and may differ from the last `get-member` answer.
         - Temporary (SO20-3031): if `vouchers[]` is absent, the backend consumes the vouchers the
           matching `get-member` call for the same `shop_id` + `pos_id` + `receipt` reported as
           applied, and re-checks their thresholds against the basket that call evaluated. This is
@@ -497,8 +507,13 @@ components:
           type: string
           description: >-
             Machine-readable reason why the voucher was not applied. Common values:
-            `LOW_PURCHASE_AMOUNT`, `ALCOHOL_EXCLUDED`, `DRS_EXCLUDED`,
-            `DISCOUNT_CAP_REACHED`, `NOT_STARTED`,
+            `LOW_PURCHASE_AMOUNT`, `ALCOHOL_EXCLUDED` and `DRS_EXCLUDED` (only when
+            counting the excluded lines would have covered the shortfall; otherwise a
+            basket holding alcohol or DRS still reports `LOW_PURCHASE_AMOUNT`),
+            `DISCOUNT_CAP_REACHED` (shop discounts only; never reported for a
+            wallet-funded voucher),
+            `NOT_APPLICABLE` (catch-all: the voucher was not applied and no other
+            reason fits), `NOT_STARTED`,
             `ALREADY_USED`, `VOUCHER_EXPIRED`, `VOUCHER_REVOKED`, `VOUCHER_NOT_FOUND`,
             `MEMBER_MISMATCH`, `MEMBER_REQUIRED`, `WRONG_COUNTRY` (voucher belongs to
             the other country than the shop).
@@ -509,27 +524,42 @@ components:
           example: "13 euro missing for get 5 euro spent 25 euro"
         missing_amount:
           type: integer
-          description: Additional spend required for voucher eligibility, in cents
+          description: >-
+            Additional spend required, in minor units. For a threshold shortfall and for
+            `ALCOHOL_EXCLUDED` / `DRS_EXCLUDED` this is additional *eligible* spend. When the
+            voucher was refused to keep the minimum amount payable, it is additional spend on
+            the order as a whole, excluded lines included.
           minimum: 0
           example: 1300
         alcohol_amount:
           type: integer
-          description: Alcohol amount excluded from loyalty, in minor units
+          description: >-
+            Alcohol amount excluded from loyalty, in minor units, for the whole basket.
+            Present only with `ALCOHOL_EXCLUDED` / `DRS_EXCLUDED`.
           minimum: 0
           example: 2750
         deposit_amount:
           type: integer
-          description: DRS deposit amount excluded from loyalty, in minor units
+          description: >-
+            DRS deposit amount excluded from loyalty, in minor units, for the whole basket.
+            Present only with `ALCOHOL_EXCLUDED` / `DRS_EXCLUDED`.
           minimum: 0
           example: 200
         excluded_amount:
           type: integer
-          description: Total alcohol and DRS amount excluded from loyalty, in minor units
+          description: >-
+            Total alcohol and DRS amount excluded from loyalty, in minor units, for the whole
+            basket. Present only with `ALCOHOL_EXCLUDED` / `DRS_EXCLUDED`.
           minimum: 0
           example: 2950
         eligible_amount:
           type: integer
-          description: Remaining amount available when this voucher was evaluated, in minor units
+          description: >-
+            Budget still available when this voucher was weighed, in minor units, after the
+            staff discount and any vouchers already applied. Present only with
+            `ALCOHOL_EXCLUDED` / `DRS_EXCLUDED`. Diagnostic value for cashier messaging: it
+            is not `basket total - excluded_amount` and should not be reconciled against the
+            basket.
           minimum: 0
           example: 0
 
