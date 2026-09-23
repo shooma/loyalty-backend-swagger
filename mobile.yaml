@@ -41,6 +41,8 @@ servers:
 tags:
   - name: Mobile - Public
     description: Public app configuration, documents and FAQ.
+  - name: Mobile - Support
+    description: Public Contact support form - subject list and submission.
   - name: Mobile - Auth
     description: OTP login/signup and mobile session lifecycle.
   - name: Mobile - Profile
@@ -116,6 +118,210 @@ paths:
           $ref: '#/components/responses/NotModified'
         '400':
           $ref: '#/components/responses/InvalidCountry'
+  /api/v1/mobile/support/config:
+    get:
+      tags: [Mobile - Support]
+      operationId: mobileGetSupportConfig
+      summary: Subject list and rules for the Contact support form
+      description: |
+        Requires polonez_loyalty_mobile_api 18.0.37.0.0 or later (SO20-3191).
+        Public: fetch it without a token, the form is open to guests too.
+        Returns active subjects in display order, the pre-selected subject id,
+        and the validation rules the form must apply before submitting.
+        Subjects are edited in Odoo and appear here without an app release, so
+        fetch this when Contact support is opened rather than caching it for
+        the session. Do not hard-code the subject list or its ids.
+        There is no country parameter: the list and the mailbox behind it are
+        the same for Ireland and Northern Ireland.
+        Store the ETag and send it as If-None-Match on the next fetch; a
+        matching validator returns 304 with no body, so reuse the cached JSON.
+        `message_min_length` and `message_max_length` count **Unicode code
+        points**. Count with `[...str].length`, not `str.length` - the latter
+        counts UTF-16 units, so a message of emoji measures double and the form
+        would refuse text the API accepts.
+      security: []
+      parameters:
+        - in: header
+          name: If-None-Match
+          description: Previously returned ETag for the support config.
+          schema:
+            type: string
+          example: 'W/"support-v1-5-5-2026-09-22 08:00:00"'
+      responses:
+        '200':
+          description: Active subjects and the form rules
+          headers:
+            ETag:
+              description: Opaque weak validator over the subject list.
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: public, no-cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportConfigResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+
+  /api/v1/mobile/support/requests:
+    post:
+      tags: [Mobile - Support]
+      operationId: mobileSubmitSupportRequest
+      summary: Submit a Contact support request
+      description: |
+        Requires polonez_loyalty_mobile_api 18.0.37.0.0 or later (SO20-3191).
+
+        Open to everyone: guests without an account, members with an incomplete
+        or unverified profile, and fully registered members. Do not require
+        sign-up, OTP or a verified email before showing this form.
+
+        Authentication is **optional**. Send the Bearer token when the app has
+        one and the request is attached to that member using server-side data
+        only - name, phone and country are read from the profile and any
+        `user_id` in the body is ignored. An expired or revoked token is served
+        as a guest rather than refused, and an account pending deletion may
+        still write in.
+
+        `email` is the reply address as typed. It is normally pre-filled from
+        Account details and may be edited; submitting a different address does
+        not change the account's email and does not affect its verification.
+
+        `application` and `app_version` are technical metadata the app sends
+        automatically, not extra form fields, and they are expected on guest
+        submissions too. `app_version` is the installed build's real version -
+        not the API version, the OS version or anything inferred from the
+        User-Agent. When the build genuinely cannot report them, omit them: the
+        request is still accepted and the mail says "Not provided".
+
+        On success the request is stored and both emails are queued. Show the
+        thank-you screen and return to the FAQ. `request_id` is the public
+        reference (a string such as `SUP-26001`, not the internal id); it
+        appears in both emails and in Odoo, and it does not change on a retry.
+
+        Send `Idempotency-Key` so a double tap or a retry after a timeout
+        returns the original `request_id` instead of filing a second request.
+        Reuse the same key for retries of the same submission, and generate a
+        new one for a new submission.
+
+        On an error stay on the form and keep the user's input. Errors carry
+        `details.field` so the message can be shown under the right control.
+      security:
+        - {}
+        - MobileBearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: >-
+            Opaque client-generated key, at most 128 characters. Repeating a
+            request with the same key and the same body returns the original
+            reference with status 200. The same key with a different body is a
+            409 conflict.
+          schema:
+            type: string
+          example: 4f1d0a1e-0c2e-4f0e-9a1a-2f2b6e7c1d55
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportRequestPayload'
+      responses:
+        '201':
+          description: Request stored and both emails queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportRequestAccepted'
+        '200':
+          description: >-
+            Replay of an idempotency key already answered. Same reference, no
+            second request and no second pair of emails.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportRequestAccepted'
+        '400':
+          description: |
+            Validation failure. Codes:
+            `INVALID_SUBJECT` - unknown or archived subject. `details.refresh_config`
+            is true: refetch `/support/config` and ask the user to choose again.
+            The subject is never silently replaced with the default.
+            `INVALID_MESSAGE` - empty after trimming, or outside
+            `details.min`..`details.max` code points.
+            `INVALID_EMAIL` - malformed address. `details.suggestion` may carry a
+            corrected address to offer ("did you mean ...?").
+            `INVALID_FIELD` - unknown `application`.
+            `INVALID_IDEMPOTENCY_KEY` - the header is too long.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidSubject:
+                  value:
+                    status: false
+                    error:
+                      code: INVALID_SUBJECT
+                      message: Choose a subject from the current list
+                      details: {field: subject_id, refresh_config: true}
+                invalidMessage:
+                  value:
+                    status: false
+                    error:
+                      code: INVALID_MESSAGE
+                      message: The message must be between 5 and 15000 characters
+                      details: {field: message, min: 5, max: 15000}
+                invalidEmail:
+                  value:
+                    status: false
+                    error:
+                      code: INVALID_EMAIL
+                      message: Invalid email address
+                      details: {field: email, suggestion: gmail.com}
+        '409':
+          description: The idempotency key was already used for a different body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: IDEMPOTENCY_KEY_CONFLICT
+                  message: This idempotency key was used for a different request
+        '413':
+          description: Request body too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: |
+            Rate limited. Limits are per rolling hour and are configurable in
+            Odoo; the shipped values are 3 per email address, 30 per IP and 5
+            per signed-in account. Respect `Retry-After` and keep the user's
+            input on the form.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+                example: 3600
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: SUPPORT_RATE_LIMIT
+                  message: Too many requests from this email address, try again later
+                  details: {retry_after: 3600}
+
   /api/v1/mobile/about:
     get:
       tags: [Mobile - Public]
@@ -2463,6 +2669,97 @@ components:
               type: string
               nullable: true
               description: International phone number; hide the contact action when null.
+    SupportConfigResponse:
+      type: object
+      required: [topics, default_topic_id, rules]
+      properties:
+        topics:
+          type: array
+          description: Active subjects in display order.
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: integer
+                description: Stable identifier to send back as `subject_id`.
+                example: 1
+              name:
+                type: string
+                example: Account & Login
+        default_topic_id:
+          type: integer
+          nullable: true
+          description: Subject to pre-select. Ships as Account & Login.
+          example: 1
+        rules:
+          type: object
+          required: [message_min_length, message_max_length, required_fields]
+          properties:
+            message_min_length:
+              type: integer
+              description: Minimum message length in Unicode code points, after trimming.
+              example: 5
+            message_max_length:
+              type: integer
+              description: Maximum message length in Unicode code points, after trimming.
+              example: 15000
+            required_fields:
+              type: array
+              items:
+                type: string
+              example: [subject_id, message, email]
+
+    SupportRequestPayload:
+      type: object
+      required: [subject_id, message, email]
+      properties:
+        subject_id:
+          type: integer
+          description: Id of an active subject from `/support/config`.
+          example: 1
+        message:
+          type: string
+          description: >-
+            Trimmed before validation; 5 to 15000 Unicode code points. Count
+            with `[...str].length`, not `str.length`.
+          example: My points did not land after shopping yesterday.
+        email:
+          type: string
+          format: email
+          description: >-
+            Reply address as typed. Pre-fill from Account details when
+            available; editing it here does not change the account.
+          example: member@example.com
+        application:
+          type: string
+          enum: [polonez, eastore]
+          description: Branded app sending the request. Omit if genuinely unknown.
+        app_version:
+          type: string
+          maxLength: 32
+          description: >-
+            Installed build version. Never the API or OS version, and never
+            inferred from the User-Agent. Omit if genuinely unavailable.
+          example: 1.0.463
+        country:
+          $ref: '#/components/schemas/OperatingCountry'
+
+    SupportRequestAccepted:
+      type: object
+      required: [request_id, message]
+      properties:
+        request_id:
+          type: string
+          description: >-
+            Public reference for this request, quoted in both emails and
+            findable in Odoo. Stable across retries. Not the internal id.
+          example: SUP-26001
+        message:
+          type: string
+          description: Confirmation text to show before returning to the FAQ.
+          example: Thank you for your message. We'll contact you as soon as possible.
+
     ErrorResponse:
       type: object
       required:

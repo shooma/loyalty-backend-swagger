@@ -264,6 +264,8 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/legal/privacy` | Privacy Policy title + HTML. `?country=ie\|ni` **required** |
 | GET | `/api/v1/mobile/about` | About Loyalty Program title + HTML. `?country=ie\|ni` **required** |
 | GET | `/api/v1/mobile/offers/media/{kind}/{id}` | Public image/PDF media for visible offers/campaigns/banners |
+| GET | `/api/v1/mobile/support/config` | Contact support subjects + form rules (no country parameter) |
+| POST | `/api/v1/mobile/support/requests` | Submit a Contact support request. Token optional |
 
 ### Auth (no token)
 | Method | Path | Purpose |
@@ -1047,3 +1049,93 @@ responses — there is no fallback to the other country.
 without downloading it; the ETag answers that better, because it follows the content
 while `version` is typed by hand in Odoo — an edit that left it alone made the hint
 claim nothing had changed. The version itself is still returned with the document.
+
+
+## Contact support (SO20-3191)
+
+Two endpoints behind the **Contact support** button at the bottom of the FAQ:
+
+```text
+GET  /api/v1/mobile/support/config
+POST /api/v1/mobile/support/requests
+```
+
+**The form is open to everyone.** Guests with no account, members with an incomplete
+or unverified profile, and fully registered members all submit through the same call.
+Do not gate the screen behind sign-up, OTP or email verification.
+
+**The token is optional.** Send `Authorization: Bearer ...` when the app has one and the
+request is attached to that member — but the attachment is made from server-side data
+only. Name, phone and operating country come off the profile; a `user_id` in the body is
+ignored. An expired or revoked token is treated as a guest rather than refused with 401,
+and an account pending deletion may still write in.
+
+**Fetch the subjects, do not hard-code them.** `GET /support/config` returns active
+subjects in display order, the id to pre-select (`Account & Login` on a fresh install)
+and the form rules. Marketing adds, renames and archives subjects in Odoo and the change
+is live on the next fetch, with no app release. Fetch it when the screen opens; keep the
+`ETag` and send `If-None-Match`, and a `304` means the cached list is still good.
+
+The fresh-install order is: `Account & Login`, `Loyalty Card`, `Points & Rewards`,
+`Vouchers`, `App Issues`, `Store Experience`, `Other Enquiries`.
+
+**Counting the message.** `message_min_length` / `message_max_length` are in **Unicode
+code points**, measured after trimming. JavaScript's `str.length` counts UTF-16 units, so
+a message of emoji measures double and a form using it would refuse text the API accepts.
+Count with `[...str].length`.
+
+**The email field.** Pre-fill from Account details when there is one, otherwise leave it
+empty with the placeholder `example@gmail.com`. It is editable, and the address actually
+typed is the one used — submitting a different address does **not** change the account's
+email and does not affect its verification state. A likely typo comes back as
+`details.suggestion` on a `400 INVALID_EMAIL`; offering "did you mean …?" is optional.
+
+**Metadata, not form fields.** `application` (`polonez` or `eastore`) and `app_version`
+are sent automatically, on guest submissions too. `app_version` is the installed build's
+real version — not the API version, not the OS version, and never guessed from the
+User-Agent. If a build genuinely cannot report them, omit them: the request is accepted
+and the email says "Not provided". Do not invent values to fill the field.
+
+**Idempotency.** Send `Idempotency-Key` (any opaque string up to 128 characters, a UUID
+is ideal). Retrying after a timeout or a double tap with the same key returns the original
+`request_id` with status `200` instead of filing a second request and sending a second
+pair of emails. The same key with a different body is a `409`. Generate a fresh key for
+each new submission.
+
+**On success** the request is stored and both emails are queued. Show
+`Thank you for your message. We'll contact you as soon as possible.` and return to the
+FAQ. `request_id` is the public reference — a string such as `SUP-26001`, not a number —
+and it is what appears in both emails and in Odoo. It does not change when a request is
+retried or when a failed email is resent.
+
+**On failure** stay on the form and keep what the user typed. Every validation error
+carries `details.field` so it can be shown under the right control:
+
+| Code | Field | Meaning |
+|---|---|---|
+| `INVALID_SUBJECT` | `subject_id` | Unknown or archived subject. `details.refresh_config` is true — refetch `/support/config` and ask again. The subject is never silently replaced |
+| `INVALID_MESSAGE` | `message` | Empty after trimming, or outside `details.min`..`details.max` |
+| `INVALID_EMAIL` | `email` | Malformed. `details.suggestion` may hold a correction |
+| `INVALID_FIELD` | `application` | Not `polonez` or `eastore` |
+| `IDEMPOTENCY_KEY_CONFLICT` | — | The key was used for a different body |
+| `SUPPORT_RATE_LIMIT` | — | `429`, with `Retry-After` and `details.retry_after` in seconds |
+
+Rate limits are per rolling hour and configurable in Odoo. The shipped values are 3 per
+email address, 30 per IP and 5 per signed-in account; there is no global cap by default.
+
+```bash
+# subjects and rules (no auth)
+curl -s "$BASE/api/v1/mobile/support/config"
+
+# submit as a guest
+curl -s -X POST "$BASE/api/v1/mobile/support/requests" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 4f1d0a1e-0c2e-4f0e-9a1a-2f2b6e7c1d55' \
+  -d '{"subject_id": 1,
+       "message": "My points did not land after shopping yesterday.",
+       "email": "member@example.com",
+       "application": "eastore",
+       "app_version": "1.0.463",
+       "country": "ie"}'
+# -> 201 {"request_id": "SUP-26001", "message": "Thank you for your message. ..."}
+```
