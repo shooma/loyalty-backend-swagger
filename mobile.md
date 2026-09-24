@@ -176,7 +176,15 @@ and the two options below describe it.
 ### Option A — fixed test phones (recommended, self-service)
 
 **Test phones** are configured on preprod. When you request an OTP for any of
-these exact phones, the code is **fixed** and no SMS is attempted:
+these exact phones, the code is **fixed** and no SMS is attempted.
+Configured test phones on any stand bypass **all OTP request limits** (per-phone,
+per-IP and global), return `retry_after: 0`, and do not consume normal users'
+request quotas. Code expiry and the failed-verification attempt cap still apply;
+you can request a fresh code immediately after a lockout. All request limits
+remain enabled for phones outside the list, including other Mailtrap recipients.
+Removing a phone from the list restores normal limits and delivery for new requests.
+
+The configured preprod phones are:
 
 | E.164 phone | `country` | `phone` field | OTP |
 |---|---|---|---|

@@ -468,6 +468,11 @@ paths:
         and the SMS is sent from that brand's registered sender. It does not
         affect rate limiting, which is keyed on phone and network only.
 
+        Configured fixed-code test phones bypass all OTP request limits
+        (phone, IP and global), return `retry_after: 0`, and do not consume
+        other users' request quotas. Code expiry and failed-attempt lockout
+        still apply. Phones outside that list retain all request limits.
+
         On preprod, the following test phones use fixed OTP `000000` and do not
         send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
         `+442800000000` (`country=ni`, `phone=2800000000`),
@@ -3381,7 +3386,7 @@ components:
           example: 300
         retry_after:
           type: integer
-          description: Recommended wait time before requesting another code.
+          description: Recommended wait in seconds before requesting another code; 0 for configured fixed-code test phones.
           example: 60
 
     OtpVerifyRequest:
