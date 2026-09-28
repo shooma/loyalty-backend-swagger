@@ -151,6 +151,28 @@ next call and must return to the login screen. Two consequences for the app:
 - Re-validate the session when returning from background — do not skip the call
   because profile/card data is cached — so a signed-out device notices promptly.
 
+### 2.5 App version headers
+
+Send these on **every** request, public and authenticated:
+
+```
+X-App-Application: polonez          # eastore | polonez, as in the login body
+X-App-Platform: ios                 # ios | android
+X-App-Version: 1.4.0                # display string, App.getInfo().version
+X-App-Build: 45                     # integer, App.getInfo().build
+```
+
+The server compares builds, never version strings. They are allowed through CORS
+today; the server does not act on them yet. Two responses are reserved for when it
+does, and the app should handle both from its first production release:
+
+- **`426 APP_UPDATE_REQUIRED`** on a route that no longer serves this build. Show
+  `error.message` with a link to the store; the rest of the app keeps working.
+- **`X-App-Update: available`** response header (exposed through CORS): a newer
+  build is recommended. Show a dismissible "update available" banner.
+
+A request without these headers is never answered with `426`.
+
 ---
 
 ## 3. Getting the OTP on the non-production stands

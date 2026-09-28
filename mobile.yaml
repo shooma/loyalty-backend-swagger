@@ -15,6 +15,13 @@ info:
     In this OpenAPI document paths use the canonical `/api/v1/mobile` prefix.
     Select a server ending with `/odoo` from the Servers dropdown when you need
     to call the Odoo-compatible route.
+
+    Every request should carry the app version headers `X-App-Application`,
+    `X-App-Platform`, `X-App-Version` and `X-App-Build` (integer). They are
+    allowed through CORS; the server does not act on them yet. Reserved for
+    when it does: `426 APP_UPDATE_REQUIRED` on a route that no longer serves
+    the build, and an `X-App-Update: available` response header recommending
+    an update. A request without the headers is never answered with `426`.
   version: 1.0.0
   contact:
     name: Mike Shumkov (Polonez.ie)
