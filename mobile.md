@@ -426,6 +426,14 @@ that application could not be confirmed; do not show the chip in either case.
 Non-purchase rows return `null`. Never infer this checkout-time value from
 `/me.staff_discount`, which is the member's current rate and can change later.
 
+`amount_cents` retains the total reported in `finalize-order.transaction_value`.
+Depending on the till, that field can be before or after loyalty discounts.
+Use `paid_amount_cents` for the amount after discounts: it is the sum of final
+basket lines, returned only when it also equals the total tenders minus change.
+It is `null` when the payment data is missing or inconsistent, and for
+non-purchase rows. Do not subtract `staff_discount_cents` or `vouchers_used`
+from `paid_amount_cents` again.
+
 `occurred_at` is UTC and comes from the till receipt, not from when the finalize
 call reached Odoo — a till replaying a queued receipt keeps its real time. A
 conversion uses midnight on the date Head Office scheduled; several missed

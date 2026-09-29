@@ -4094,6 +4094,7 @@ components:
         - currency
         - store
         - amount_cents
+        - paid_amount_cents
         - staff_discount_cents
         - receipt
         - note
@@ -4137,8 +4138,21 @@ components:
         amount_cents:
           type: integer
           nullable: true
-          description: Basket total in minor units. Null for non-purchase rows.
+          description: |
+            Total reported in finalize-order.transaction_value, in minor units.
+            Depending on the till this may be before or after loyalty discounts.
+            Null for non-purchase rows.
           example: 9000
+        paid_amount_cents:
+          type: integer
+          nullable: true
+          description: |
+            Final basket amount after discounts, in minor units. Returned only
+            when the sum of final line values agrees with total tenders minus
+            change. Null when payment data is missing or inconsistent, and for
+            non-purchase rows. Staff and voucher discounts are already included;
+            clients must not subtract them again.
+          example: 8100
         staff_discount_cents:
           type: integer
           nullable: true

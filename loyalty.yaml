@@ -778,7 +778,12 @@ components:
           example: "tx-integration-tester-01-1"
         transaction_value:
           type: integer
-          description: Final transaction amount in cents
+          description: |
+            Till-reported transaction total in cents. During the POS transition,
+            this may be either the pre-loyalty-discount total or the final total.
+            Final basket line values must include applied discounts. When this
+            field remains gross, tenders minus change must match the final line
+            sum for the backend to confirm the discount.
           minimum: 0
           example: 2590
         change:
