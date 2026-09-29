@@ -3512,6 +3512,12 @@ components:
         first_name:
           type: string
           maxLength: 100
+          description: >-
+            Letters from any script joined by spaces, hyphens (`-`) and
+            apostrophes (`'`); must start and end with a letter. Digits, emoji
+            and other symbols are refused with `400 INVALID_FIELD`
+            (`details.field: first_name`). Stored trimmed, with repeated spaces
+            collapsed and typographic apostrophes (`’`) folded to `'`.
         terms_accepted:
           type: boolean
           description: Must be true.
@@ -3651,9 +3657,21 @@ components:
         first_name:
           type: string
           maxLength: 100
+          description: >-
+            Letters from any script joined by spaces, hyphens (`-`) and
+            apostrophes (`'`); must start and end with a letter. Digits, emoji
+            and other symbols are refused with `400 INVALID_FIELD`
+            (`details.field: first_name`). Stored trimmed, with repeated spaces
+            collapsed and typographic apostrophes (`’`) folded to `'`.
         last_name:
           type: string
           maxLength: 100
+          description: >-
+            Letters from any script joined by spaces, hyphens (`-`) and
+            apostrophes (`'`); must start and end with a letter. Digits, emoji
+            and other symbols are refused with `400 INVALID_FIELD`
+            (`details.field: last_name`). Stored trimmed, with repeated spaces
+            collapsed and typographic apostrophes (`’`) folded to `'`.
         email:
           type: string
           format: email
