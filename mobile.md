@@ -162,16 +162,27 @@ X-App-Version: 1.4.0                # display string, App.getInfo().version
 X-App-Build: 45                     # integer, App.getInfo().build
 ```
 
-The server compares builds, never version strings. They are allowed through CORS
-today; the server does not act on them yet. Two responses are reserved for when it
-does, and the app should handle both from its first production release:
+The server compares builds, never version strings; build numbers are separate per
+app and platform. A request with a missing or malformed application, platform or
+build counts as an unknown client: nothing is recorded, no hint, never `426`.
+
+What the server does with them:
+
+- **Records the build on the session** at login (`/auth/otp/verify`,
+  `/auth/signup/complete`) and refreshes it on the `GET /me` heartbeat, so a
+  session keeps up with app updates without a re-login. At login the headers win
+  over the body's `app_version`. Headers naming another app or platform than the
+  session's are ignored.
+- **`X-App-Update: available`** response header (exposed through CORS) on 2xx, 3xx
+  and 4xx responses - not on 5xx - when the build is below the recommended build
+  set in Odoo (Settings → Loyalty → App updates; 0 = off). Show a dismissible
+  "update available" banner.
+
+Reserved, not sent yet - the app should still handle it from its first production
+release:
 
 - **`426 APP_UPDATE_REQUIRED`** on a route that no longer serves this build. Show
   `error.message` with a link to the store; the rest of the app keeps working.
-- **`X-App-Update: available`** response header (exposed through CORS): a newer
-  build is recommended. Show a dismissible "update available" banner.
-
-A request without these headers is never answered with `426`.
 
 ---
 
