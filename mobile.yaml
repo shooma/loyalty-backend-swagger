@@ -1288,7 +1288,8 @@ paths:
         discount applied - rather than being split across extra rows. Rows with
         `points: 0` are real: a basket too small to earn anything is still a visit.
         Use `staff_discount_cents`, not the member's current profile rate, to decide
-        whether that receipt gets a Staff discount chip.
+        whether that receipt gets a Staff discount chip, and label the chip with
+        that row's `staff_discount_percent`.
 
         Paginated by an opaque cursor rather than an offset, because new rows
         arrive at the top while the member scrolls and an offset would then
@@ -4128,6 +4129,7 @@ components:
         - amount_cents
         - paid_amount_cents
         - staff_discount_cents
+        - staff_discount_percent
         - receipt
         - note
         - vouchers_used
@@ -4197,6 +4199,20 @@ components:
             Null for non-purchase rows. Never infer this checkout-time value from
             the member's current `staff_discount` profile block.
           example: 900
+        staff_discount_percent:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 100
+          description: |
+            Staff discount rate in effect when this receipt was finalized, for the
+            chip label ("Staff discount · 10%"). Set only when
+            `staff_discount_cents` is positive; null otherwise, including all
+            non-purchase rows. Kept per receipt, so a later rate change does not
+            alter history, and valid on receipts that also used vouchers. It is
+            the nominal rate: the maximum discount cap may have cut
+            `staff_discount_cents` below it, so do not compute one from the other.
+          example: 10
         receipt:
           type: string
           nullable: true

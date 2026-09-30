@@ -437,6 +437,12 @@ that application could not be confirmed; do not show the chip in either case.
 Non-purchase rows return `null`. Never infer this checkout-time value from
 `/me.staff_discount`, which is the member's current rate and can change later.
 
+Label the chip with `staff_discount_percent`: the rate in effect on that receipt,
+present only when `staff_discount_cents` is positive and `null` otherwise. Do not
+derive the percent from the amounts. The rate stays correct when vouchers were
+used on the same receipt. The amount can sit below the rate when the maximum
+discount cap applied.
+
 `amount_cents` retains the total reported in `finalize-order.transaction_value`.
 Depending on the till, that field can be before or after loyalty discounts.
 Use `paid_amount_cents` for the amount after discounts: it is the sum of final
