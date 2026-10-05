@@ -184,6 +184,10 @@ release:
 - **`426 APP_UPDATE_REQUIRED`** on a route that no longer serves this build. Show
   `error.message` with a link to the store; the rest of the app keeps working.
 
+Sentry tracing headers `sentry-trace` and `baggage` are allowed in preflight, so
+the app may list the API in Sentry's `tracePropagationTargets` without failing
+its requests.
+
 ---
 
 ## 3. Getting the OTP on the non-production stands
