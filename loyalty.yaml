@@ -47,6 +47,7 @@ paths:
         - `vouchers` can contain anonymous paper vouchers and app vouchers scanned at the POS
         - Basket prices and discounts coming from POS are the source of truth for all eligibility calculations
         - Department 7/07/007 (alcohol) and department 20 + group 660 (DRS) are excluded from staff and voucher discounts
+        - Staff discount is granted only when `qr_code` carries the app's valid daily QR code (`lq1.`). The permanent card number (Apple/Google Wallet, plastic card, typed in) and `phone` identify the member for points and vouchers only
         - Vouchers apply in full or not at all; a discount voucher needs `max(minimum purchase, nominal)` of remaining eligible spend
         - Vouchers funded from a member's points wallet are the member's own money, not a shop discount: they ignore minimum-purchase thresholds, do not consume the qualifying spend other vouchers are measured against, and are not limited by the maximum basket discount
         - No voucher of any kind is ever spent on alcohol or DRS: the value of all applied vouchers together never exceeds the eligible lines, so an excluded line is always paid for in full. This binds wallet vouchers too, so a wallet voucher does reduce what is left for other vouchers to discount
@@ -613,7 +614,10 @@ components:
       properties:
         qr_code:
           type: string
-          description: Loyalty program member QR code
+          description: |
+            Scanned member code: the app's daily QR code (`lq1.YYYYMMDD.<random>`)
+            or the permanent 16-digit card number (Apple/Google Wallet, plastic card).
+            Only the daily app code grants the staff discount.
           example: "3806868525361001"
         phone:
           $ref: '#/components/schemas/MemberPhone'
@@ -737,7 +741,10 @@ components:
       properties:
         qr_code:
           type: string
-          description: Loyalty program member QR code
+          description: |
+            Scanned member code: the app's daily QR code (`lq1.YYYYMMDD.<random>`)
+            or the permanent 16-digit card number (Apple/Google Wallet, plastic card).
+            Only the daily app code grants the staff discount.
           example: "3806868525361001"
         phone:
           $ref: '#/components/schemas/MemberPhone'

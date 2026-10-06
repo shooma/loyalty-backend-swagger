@@ -331,6 +331,8 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | POST | `/api/v1/mobile/me/email/verify` | Verify email code |
 | GET/PATCH | `/api/v1/mobile/me/preferences/{application}` | Read/update Eastore or Polonez communication preferences |
 | GET | `/api/v1/mobile/me/card` | Digital card + points, conversion progress/date, currency + daily QR batch (current country) |
+| GET | `/api/v1/mobile/me/card/wallet/apple` | Signed Apple Wallet pass (`.pkpass`) with the permanent card number |
+| GET | `/api/v1/mobile/me/card/wallet/google` | Signed "Add to Google Wallet" link (`save_url`) for the same card |
 | GET | `/api/v1/mobile/me/points-history` | Wallet history, cursor-paginated (filters: `limit`, `cursor`); current country, 2 years back |
 | POST | `/api/v1/mobile/me/visits/{entry_id}/feedback` | Rate one visit from the history (once per visit) |
 | GET | `/api/v1/mobile/vouchers` | List my vouchers, current country (filters: `status`, `amount`, `q`) |
@@ -468,6 +470,43 @@ member scrolls, and an offset would repeat or skip rows across pages. Pass the
 previous response's `next_cursor` to load more; omit it for the newest page, which
 is what pull-to-refresh does. A malformed cursor is a 400 `INVALID_CURSOR` rather
 than a silent restart from the top. `limit` defaults to 20 and is clamped to 100.
+
+### Apple Wallet card
+
+`GET /me/card/wallet/apple` returns the member's signed pass as
+`application/vnd.apple.pkpass`. Fetch it with the `Authorization` header and pass the
+bytes to PassKit (`PKAddPassesViewController`) - never open the URL in a browser, the
+Bearer token must not end up in a URL.
+
+- One card for both brands, one shared design. Adding it again from either app
+  replaces the card in Wallet (same Pass Type ID and `serialNumber` = `card_code`).
+- The pass shows the "Save Club Card" badge, the member's `first_name` (NAME) and the
+  permanent `card_code` (CARD NUMBER, and as a QR code with "Scan at Polonez or Eastore"
+  under it). No points or vouchers, and no pass updates: the name is the one at the
+  time the card was added - after a rename the member adds the card again. No first
+  name, no NAME field.
+- At the till it only collects points. Spending points and vouchers, and the staff
+  discount, still need the daily QR in the app - keep that screen as it is.
+- Sharing the card is allowed, as the business permits one account for several people:
+  the pass can be forwarded from Apple Wallet, and several Google accounts can save the
+  same Google card.
+- `503 WALLET_UNAVAILABLE` means issuance is not set up on this environment (or its
+  certificate is unusable): hide the button rather than retrying.
+
+### Google Wallet card
+
+`GET /me/card/wallet/google` returns `{"save_url": "https://pay.google.com/gp/v/save/<jwt>"}`.
+Open the URL, or pass the JWT after `/save/` to the Google Wallet Android SDK
+(`PayClient.savePassesJwt`). Fetch it right before use and do not store it.
+
+- The same card as Apple Wallet: shared design, `first_name` and the permanent
+  `card_code` as a QR code, no points or vouchers, no updates. Collects points only.
+- Google keeps a card it already holds: saving again after a rename does **not**
+  change the name on it (planned as a separate change if needed).
+- The card id is stable, so saving again from either app opens the existing card.
+- Until Google approves publishing, only test accounts added in the Google Pay &
+  Wallet Console can save the card; others see an error from Google, not from us.
+- `503 WALLET_UNAVAILABLE`: Google Wallet is not set up on this environment.
 
 ---
 

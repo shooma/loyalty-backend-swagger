@@ -1266,6 +1266,151 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/mobile/me/card/wallet/apple:
+    get:
+      tags:
+        - Mobile - Card
+      summary: Get Apple Wallet card
+      description: |
+        Returns the signed Apple Wallet pass (`.pkpass`) of the signed-in member.
+        Takes no parameters: the pass is always issued for the session's own
+        profile.
+
+        The pass is the same for both brands: the member's `first_name` and the
+        permanent `card_code` as a QR code and as text, with no points
+        balance or vouchers. At the till it identifies the member for collecting
+        points; spending points and vouchers, and the staff discount, still need
+        the app's own card. There is no pass update service: the name is the one
+        at issuance, and a renamed member adds the card again to refresh it.
+
+        The pass is identified by the Pass Type ID and `serialNumber` = `card_code`,
+        so requesting it again - from either app - replaces the member's card in
+        Wallet instead of adding a second one.
+
+        Download it with the usual `Authorization` header and hand the bytes to
+        PassKit (`PKAddPassesViewController`); do not open this URL in a browser,
+        the Bearer token must not travel in a URL.
+      operationId: mobileGetAppleWalletPass
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Signed Apple Wallet pass.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: private, no-store
+          content:
+            application/vnd.apple.pkpass:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '409':
+          description: The member has no card number to put on the pass.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: CARD_UNAVAILABLE
+                  message: Member has no card number
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: |
+            Wallet issuance is not configured on this environment, or its signing
+            certificate is unusable (for example expired). Hide or disable the
+            Add to Apple Wallet button; retrying will not help until it is fixed
+            on the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: WALLET_UNAVAILABLE
+                  message: Wallet card issuance is not available
+
+  /api/v1/mobile/me/card/wallet/google:
+    get:
+      tags:
+        - Mobile - Card
+      summary: Get Google Wallet save link
+      description: |
+        Returns a signed "Add to Google Wallet" link for the signed-in member's card.
+        Takes no parameters: the card is always the session's own profile.
+
+        Same card as Apple Wallet: one shared design for both brands, the member's
+        `first_name` and the permanent `card_code` as a QR code and as text,
+        no points or vouchers, no updates. At the till it only collects points.
+        Google keeps a card it already holds, so saving again after a rename does
+        not change the name on it.
+
+        The link names a stable card id, so opening it again - from either app -
+        shows the member's existing card instead of adding a copy. Fetch it right
+        before use and open it (or hand the JWT after `/save/` to the Google Wallet
+        Android SDK `savePassesJwt`); do not store it. It carries the card, not the
+        app session.
+      operationId: mobileGetGoogleWalletSaveLink
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Signed save link.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: private, no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [save_url]
+                properties:
+                  save_url:
+                    type: string
+                    format: uri
+                    example: https://pay.google.com/gp/v/save/eyJhbGciOiJSUzI1NiIs...
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '409':
+          description: The member has no card number to put on the card.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: CARD_UNAVAILABLE
+                  message: Member has no card number
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: |
+            Google Wallet is not configured on this environment. Hide or disable
+            the Add to Google Wallet button; retrying will not help.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: false
+                error:
+                  code: WALLET_UNAVAILABLE
+                  message: Wallet card issuance is not available
+
   /api/v1/mobile/me/points-history:
     get:
       tags:
