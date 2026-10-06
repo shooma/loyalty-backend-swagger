@@ -3783,11 +3783,15 @@ components:
         - percent
       properties:
         percent:
-          type: integer
+          type: number
           minimum: 0
+          exclusiveMinimum: true
           maximum: 100
-          description: Current staff discount rate applied at the till, in percent.
-          example: 10
+          description: >-
+            Current staff discount rate applied at the till, in percent: the
+            member's individual rate if one is set, otherwise the default rate.
+            May be fractional, e.g. `12.5`, with up to two decimal places.
+          example: 12.5
 
     ProfilePermissions:
       type: object
@@ -4345,13 +4349,15 @@ components:
             the member's current `staff_discount` profile block.
           example: 900
         staff_discount_percent:
-          type: integer
+          type: number
           nullable: true
-          minimum: 1
+          minimum: 0
+          exclusiveMinimum: true
           maximum: 100
           description: |
             Staff discount rate in effect when this receipt was finalized, for the
-            chip label ("Staff discount · 10%"). Set only when
+            chip label ("Staff discount · 10%"). May be fractional, e.g. `12.5`,
+            with up to two decimal places. Set only when
             `staff_discount_cents` is positive; null otherwise, including all
             non-purchase rows. Kept per receipt, so a later rate change does not
             alter history, and valid on receipts that also used vouchers. It is
