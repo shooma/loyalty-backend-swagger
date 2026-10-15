@@ -395,6 +395,8 @@ paths:
                 countries:
                   - value: ireland
                     label: Ireland
+                  - value: israel
+                    label: Israel
                   - value: poland
                     label: Poland
                 genders:
@@ -2971,6 +2973,10 @@ components:
             - $ref: '#/components/schemas/WelcomeVoucher'
         countries:
           type: array
+          description: >-
+            Country of Origin options shared with the Odoo loyalty profile,
+            including `israel` (Israel). Used by `country_of_origin` in GET/PATCH
+            /me; independent of the operating country (IE/NI).
           items:
             $ref: '#/components/schemas/Option'
         genders:
