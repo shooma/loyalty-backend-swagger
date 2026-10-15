@@ -1847,7 +1847,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ClaimVoucherRequest'
             example:
-              code: "BUY-7K3M9QF2X1A4D8C0"
+              code: "32917627127753"
       responses:
         '200':
           description: The claimed voucher, now linked to the member.
@@ -4568,7 +4568,7 @@ components:
       properties:
         code:
           type: string
-          example: "BUY-7K3M9QF2X1A4D8C0"
+          example: "32917627127753"
         type:
           type: string
           enum: [welcome, birthday, x_off_y, individual]
@@ -4640,7 +4640,7 @@ components:
         code:
           type: string
           description: The printed voucher code scanned from a paper receipt.
-          example: "BUY-7K3M9QF2X1A4D8C0"
+          example: "32917627127753"
 
     SessionsResponse:
       type: object

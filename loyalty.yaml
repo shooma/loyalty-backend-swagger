@@ -76,9 +76,9 @@ paths:
               qr_code: "3806868525361001"
               phone: "+353879991001"
               vouchers:
-                - "BUY-CZGGAM9QY7R4JYE6"
-                - "BUY-QM7HTZ4XKPRW2JND"
-                - "BUY-7WFQKZ3MTRHXPJ9D"
+                - "32457354823571"
+                - "31909029113573"
+                - "39358163552976"
               shop_id: "ATHLO"
               timestamp: "2026-04-15 13:10:00"
               receipt: "009101"
@@ -122,18 +122,18 @@ paths:
                 points_balance: 0
                 discount_total: 500
                 scanned_vouchers:
-                  - code: "BUY-CZGGAM9QY7R4JYE6"
+                  - code: "32457354823571"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
                     description: "Voucher 2 off 15"
-                  - code: "BUY-QM7HTZ4XKPRW2JND"
+                  - code: "31909029113573"
                     status: "Active"
                     applied: true
                     description: "Voucher 5 off 25"
-                  - code: "BUY-7WFQKZ3MTRHXPJ9D"
+                  - code: "39358163552976"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
@@ -206,9 +206,9 @@ paths:
               qr_code: "3806868525361001"
               phone: "+353879991001"
               vouchers:
-                - "BUY-CZGGAM9QY7R4JYE6"
-                - "BUY-QM7HTZ4XKPRW2JND"
-                - "BUY-7WFQKZ3MTRHXPJ9D"
+                - "32457354823571"
+                - "31909029113573"
+                - "39358163552976"
               shop_id: "ATHLO"
               transaction_id: "tx-integration-tester-01-1"
               timestamp: "2026-04-15 13:16:00"
@@ -254,18 +254,18 @@ paths:
                 points_collected: 30
                 current_points: 30
                 scanned_vouchers:
-                  - code: "BUY-CZGGAM9QY7R4JYE6"
+                  - code: "32457354823571"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
                     reason: "Low purchase amount"
                     missing_amount: 1000
                     description: "Voucher 2 off 15"
-                  - code: "BUY-QM7HTZ4XKPRW2JND"
+                  - code: "31909029113573"
                     status: "Used"
                     applied: true
                     description: "Voucher 5 off 25"
-                  - code: "BUY-7WFQKZ3MTRHXPJ9D"
+                  - code: "39358163552976"
                     status: "Active"
                     applied: false
                     reason_code: "LOW_PURCHASE_AMOUNT"
@@ -274,8 +274,8 @@ paths:
                     description: "Voucher 11 off 50"
                 vouchers:
                   - printed: false
-                    code: "BUY-K7RQP2MNXV4TJHDC"
-                    qr_code_payload: "BUY-K7RQP2MNXV4TJHDC"
+                    code: "39835253676005"
+                    qr_code_payload: "39835253676005"
                     description: "Voucher 5 off 25"
                     type: "x_off_y"
                     status: "Issued"
@@ -283,7 +283,7 @@ paths:
                 messages:
                   - "30 points collected"
                   - "Used vouchers: 1"
-                  - "Used voucher: BUY-QM7HTZ4XKPRW2JND (Voucher 5 off 25)"
+                  - "Used voucher: 31909029113573 (Voucher 5 off 25)"
                   - "Accrued vouchers: 1"
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -353,15 +353,18 @@ components:
     VoucherCode:
       type: string
       description: |
-        Voucher redeem code. Clients must treat it as an opaque string despite the
-        prefix: the prefix is a diagnostic aid, not a field to branch on, and the
-        random part carries no meaning.
+        Voucher redeem code. Clients must treat it as an opaque string: the
+        leading type digit is a visual aid for staff, not a field to branch on,
+        and the rest of the code carries no meaning.
 
-        A semantic prefix (`WEL`, `BDY`, `BUY`, `IND`, `PTS`) followed by 16
-        characters from `A-Z2-9` excluding `I` and `O`. Pre-2026 20-digit numeric
-        codes are still accepted for historical vouchers.
-      pattern: '^(?:(?:WEL|BDY|BUY|IND|PTS)-[A-HJ-NP-Z2-9]{16}|\d{20})$'
-      example: "BUY-CZGGAM9QY7R4JYE6"
+        Current format: 14 digits - a type digit (`1` welcome, `2` birthday,
+        `3` x_off_y, `4` individual, `5` points converted to a voucher), 12
+        random digits and a Luhn check digit. Vouchers issued earlier keep their
+        codes until they expire: the previous `WEL`/`BDY`/`BUY`/`IND`/`PTS`
+        prefix followed by 16 characters from `A-Z2-9` excluding `I` and `O`,
+        and pre-2026 20-digit numeric codes.
+      pattern: '^(?:\d{14}|(?:WEL|BDY|BUY|IND|PTS)-[A-HJ-NP-Z2-9]{16}|\d{20})$'
+      example: "32457354823571"
 
     VoucherLifecycleStatus:
       type: string
@@ -493,7 +496,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/VoucherCode'
           description: Voucher code received from POS
-          example: "BUY-9YT3FQWZKMR6HPBN"
+          example: "39811377354159"
         status:
           $ref: '#/components/schemas/VoucherLifecycleStatus'
         applied:
@@ -576,12 +579,12 @@ components:
           allOf:
             - $ref: '#/components/schemas/VoucherCode'
           description: Voucher code that POS should encode as QR/barcode when printing
-          example: "BUY-M4TQZ9KWRHXPJ3ND"
+          example: "38298204274886"
         qr_code_payload:
           allOf:
             - $ref: '#/components/schemas/VoucherCode'
           description: Optional explicit QR payload when it differs from `code`
-          example: "BUY-M4TQZ9KWRHXPJ3ND"
+          example: "38298204274886"
         description:
           type: string
           description: Voucher description
@@ -629,9 +632,9 @@ components:
           items:
             $ref: '#/components/schemas/VoucherCode'
           example:
-            - "BUY-CZGGAM9QY7R4JYE6"
-            - "BUY-QM7HTZ4XKPRW2JND"
-            - "BUY-7WFQKZ3MTRHXPJ9D"
+            - "32457354823571"
+            - "31909029113573"
+            - "39358163552976"
         shop_id:
           type: string
           description: Shop identifier
@@ -758,9 +761,9 @@ components:
           items:
             $ref: '#/components/schemas/VoucherCode'
           example:
-            - "BUY-CZGGAM9QY7R4JYE6"
-            - "BUY-QM7HTZ4XKPRW2JND"
-            - "BUY-7WFQKZ3MTRHXPJ9D"
+            - "32457354823571"
+            - "31909029113573"
+            - "39358163552976"
         shop_id:
           type: string
           description: Shop identifier
@@ -859,7 +862,7 @@ components:
           example:
             - "30 points collected"
             - "Used vouchers: 1"
-            - "Used voucher: BUY-QM7HTZ4XKPRW2JND (Voucher 5 off 25)"
+            - "Used voucher: 31909029113573 (Voucher 5 off 25)"
             - "Accrued vouchers: 1"
 
     ErrorResponse:
