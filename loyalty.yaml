@@ -58,9 +58,7 @@ paths:
         - `discount_total` includes vouchers funded from the member's points wallet, which are not limited by the maximum basket discount, so it may exceed that percentage of the basket
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
         - The operating country (IE/NI) and currency are determined by the `shop_id`'s shop, not by the member. `points_balance` reflects the member's wallet for that country, and a voucher belonging to the other country is reported as not applied with `reason_code: WRONG_COUNTRY`.
-        - Authorization is token-based with scope:
-          - POS-scoped token: `X-Pos-Id` header is optional
-          - Store-scoped token: `X-Pos-Id` header is required
+        - One bearer token serves every till; `shop_id` + `pos_id` (or the `X-Pos-Id` header) identify it. A new till of a known shop is registered on its first request (`pos_id` must be two digits, e.g. `01`); archived tills and unknown shops get `403`
       operationId: getMember
       tags:
         - Loyalty
@@ -188,9 +186,7 @@ paths:
           matching `get-member` call for the same `shop_id` + `pos_id` + `receipt` reported as
           applied, and re-checks their thresholds against the basket that call evaluated. This is
           a stop-gap while the till starts echoing the codes - do not rely on it
-        - Authorization is token-based with scope:
-          - POS-scoped token: `X-Pos-Id` header is optional
-          - Store-scoped token: `X-Pos-Id` header is required
+        - One bearer token serves every till; `shop_id` + `pos_id` (or the `X-Pos-Id` header) identify it. A new till of a known shop is registered on its first request (`pos_id` must be two digits, e.g. `01`); archived tills and unknown shops get `403`
       operationId: finalizeOrder
       tags:
         - Loyalty
@@ -304,13 +300,13 @@ components:
       scheme: bearer
       bearerFormat: opaque token
       description: |
-        Authorization token for POS integration.
-        Token scope can be terminal-specific or store-specific.
+        Authorization token for POS integration, shared by every till.
+        During a token change both the old and the new token work, so tills can switch over one by one.
     PosIdHeader:
       type: apiKey
       in: header
       name: X-Pos-Id
-      description: POS terminal identifier. Required when a store-scoped token is used.
+      description: POS terminal identifier. Optional; when sent with a body `pos_id`, both must match.
 
   parameters:
     XPosIdHeader:
@@ -319,7 +315,7 @@ components:
       required: false
       schema:
         type: string
-      description: POS terminal identifier. Required for store-scoped token, optional for POS-scoped token.
+      description: POS terminal identifier. Optional alternative to the body `pos_id`; when both are sent, they must match.
 
   schemas:
     MemberPhone:
@@ -917,7 +913,7 @@ components:
               message: "Invalid or missing authentication token"
 
     Forbidden:
-      description: Token scope validation error
+      description: Unknown shop, archived till, or a new till that cannot be registered
       content:
         application/json:
           schema:
@@ -926,8 +922,8 @@ components:
             status: false
             error:
               code: "FORBIDDEN"
-              message: "Token scope validation failed"
-              details: "Store token is not allowed for the provided X-Pos-Id"
+              message: "Unknown till"
+              details: "Unknown or inactive shop_id"
 
     NotFound:
       description: Resource not found
