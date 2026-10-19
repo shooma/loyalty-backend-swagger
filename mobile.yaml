@@ -1172,15 +1172,17 @@ paths:
         - Mobile - Profile
       summary: Request email verification code
       description: |
-        Sends a 6-digit code to the email currently saved on the profile. The
-        mail names the brand of the session's own `application`, so it takes no
-        body.
+        Creates a 6-digit code and transactionally queues an email to the address
+        currently saved on the profile. Success means queued, not SMTP acceptance
+        or inbox delivery. Temporary delivery failures are retried; duplicates are
+        possible. No delivery attempt starts after the code expires.
+        The mail names the brand of the session's own `application`, so it takes no body.
       operationId: mobileRequestEmailVerification
       security:
         - MobileBearerAuth: []
       responses:
         '200':
-          description: Email verification code created and delivery attempted.
+          description: Email verification code created and email queued for delivery.
           content:
             application/json:
               schema:
