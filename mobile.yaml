@@ -65,6 +65,8 @@ tags:
     description: Authenticated store/map listing for the current country.
   - name: Mobile - Notifications
     description: Authenticated in-app notification history and read state.
+  - name: Mobile - Popups
+    description: Authenticated marketing popups offered at app launch.
 
 paths:
   /api/v1/mobile/faq:
@@ -1729,6 +1731,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationReadAllResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AccountDeletionPending'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/mobile/me/popups:
+    get:
+      tags:
+        - Mobile - Popups
+      summary: List marketing popups
+      description: |
+        Marketing popups this member may be shown at this app launch, best
+        first (SO20-3285).
+
+        Separate from the notification centre on purpose. A campaign
+        publication and a voucher issue already record a card, and push for the
+        same event goes through the delivery pipeline; a popup is a third way
+        of surfacing the promotion, and recording it again would announce one
+        event twice. Nothing on this route writes a card or sends anything.
+
+        **Request once per cold start and do not reuse the answer between
+        launches.** A popup switched off by marketing, a campaign taken down
+        and a voucher that has since been spent all disappear from this list, and a cached
+        copy would keep offering a promotion that is no longer live. The list
+        is a few hundred bytes; the images behind it are the expensive part and
+        are cached by URL instead.
+
+        **Receiving a popup is not showing it.** The app picks the first entry
+        it has not shown yet, shows it, and records that on the device. The
+        shown set and the daily count never reach the server, so they do not
+        travel between devices. Store the set keyed by account, keep whole ids
+        rather than a position in this list - a new popup can appear above ones
+        already shown - and clear it on a fresh sign-in when `display_policy`
+        says so.
+
+        `id` is stable and independent of the content: replacing the image or
+        the title does not make a popup the member already saw come back.
+
+        Ordering is the queue. Voucher popups come first, then the editor's
+        own priority, then oldest first. The welcome popup is the app's own and
+        is not listed here; put it ahead of these.
+
+        The branded app and the market come from the session, never from a
+        parameter, for the same reason the notification feed does.
+
+        Having nothing to promote is `popups: []` with a 200. A failure is
+        always a non-200 with an error body.
+      operationId: mobileListPopups
+      security:
+        - MobileBearerAuth: []
+      responses:
+        '200':
+          description: Popups available to this member now, plus the display policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PopupListResponse'
+              examples:
+                vouchers:
+                  summary: A popup nudging a member who holds a usable voucher
+                  value:
+                    popups:
+                      - id: 12
+                        type: vouchers
+                        title: Your free hotdog is waiting
+                        image_url: https://cdn.polonez.ie/loyalty/popup-image/12.webp
+                        valid_from: "2026-10-20T00:00:00Z"
+                        valid_until: "2026-10-26T21:59:59Z"
+                        action:
+                          type: vouchers
+                        button_label: See mine
+                    display_policy:
+                      min_gap_minutes: 60
+                      max_per_day: 3
+                      reset_on_new_login: true
+                campaign:
+                  summary: A campaign popup and a plain announcement
+                  value:
+                    popups:
+                      - id: 9
+                        type: campaign
+                        title: Easter Savings are here
+                        image_url: /api/v1/mobile/offers/media/popup-image/9
+                        valid_from: "2026-10-18T00:00:00Z"
+                        valid_until: "2026-10-31T21:59:59Z"
+                        action:
+                          type: campaign
+                          id: "41"
+                        button_label: Learn more
+                      - id: 7
+                        type: none
+                        title: New store in Drogheda
+                        image_url: /api/v1/mobile/offers/media/popup-image/7
+                        valid_from: "2026-10-15T00:00:00Z"
+                        valid_until: "2026-10-22T21:59:59Z"
+                        action: null
+                        button_label: null
+                    display_policy:
+                      min_gap_minutes: 60
+                      max_per_day: 3
+                      reset_on_new_login: true
+                empty:
+                  summary: Nothing to promote
+                  value:
+                    popups: []
+                    display_policy:
+                      min_gap_minutes: 60
+                      max_per_day: 3
+                      reset_on_new_login: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4254,6 +4367,136 @@ components:
             Identifier of the target, present only for destinations that address
             a specific object: a voucher code, or an offer, campaign or store id.
           example: WELCOME10
+
+    PopupListResponse:
+      type: object
+      required:
+        - popups
+        - display_policy
+      properties:
+        popups:
+          type: array
+          description: |
+            Popups available to this member right now, in the order to offer
+            them. Empty when there is nothing to promote.
+          items:
+            $ref: '#/components/schemas/MarketingPopup'
+        display_policy:
+          $ref: '#/components/schemas/PopupDisplayPolicy'
+
+    MarketingPopup:
+      type: object
+      required:
+        - id
+        - type
+        - title
+        - image_url
+        - valid_from
+        - valid_until
+        - action
+        - button_label
+      properties:
+        id:
+          type: integer
+          description: |
+            Stable identifier, independent of the content. Key the device's
+            shown-popup set on this: editing the image or the title keeps it,
+            so an edited popup is not offered again to someone who saw it.
+          example: 12
+        type:
+          type: string
+          enum:
+            - vouchers
+            - campaign
+            - none
+          description: |
+            What the popup is about. Diagnostic only - route on `action`, not
+            on this. A build that meets an unknown value should still render
+            the popup.
+          example: vouchers
+        title:
+          type: string
+          maxLength: 90
+          description: Heading shown above the image. Any other text is baked into the image.
+          example: Your free hotdog is waiting
+        image_url:
+          type: string
+          description: |
+            Absolute CDN URL when the asset is published, otherwise a path
+            relative to the API origin. Resolve it the same way as offer and
+            campaign media. Safe to cache by URL: replacing the image changes it.
+          example: https://cdn.polonez.ie/loyalty/popup-image/12.webp
+        valid_from:
+          type: string
+          format: date-time
+          description: Start of the display window, UTC.
+          example: "2026-10-20T00:00:00Z"
+        valid_until:
+          type: string
+          format: date-time
+          description: |
+            End of the display window, UTC. Keep it: it lets the app stop
+            offering a finished popup without fetching the list again, for
+            instance when the app has been open across the boundary.
+          example: "2026-10-26T21:59:59Z"
+        action:
+          allOf:
+            - $ref: '#/components/schemas/NotificationAction'
+          description: |
+            Where the Open button leads, or null for an announcement that only
+            closes. Deliberately the same shape a notification card uses, so
+            one router handles both. Popups use `campaign` with a campaign id,
+            or `vouchers` with no id, which opens the My Vouchers list. A
+            `vouchers` popup only reaches members who gained a usable voucher
+            in their market after that popup started, so the list is never
+            empty behind it.
+        button_label:
+          type: string
+          maxLength: 12
+          nullable: true
+          description: |
+            Caption for the Open button, chosen by marketing. Null exactly when
+            `action` is null: an announcement has no button. Default is
+            "Learn more".
+          example: See mine
+
+    PopupDisplayPolicy:
+      type: object
+      description: |
+        How often popups may appear. Served with the list rather than built
+        into the app, so marketing can retune the cadence without a release.
+        The app enforces it; the server keeps no counters.
+      required:
+        - min_gap_minutes
+        - max_per_day
+        - reset_on_new_login
+      properties:
+        min_gap_minutes:
+          type: integer
+          minimum: 0
+          description: |
+            Smallest gap between two popups. At most one popup is shown per
+            launch regardless; this stops a member who restarts the app several
+            times in a row from collecting several. 0 allows one on every launch.
+          example: 60
+        max_per_day:
+          type: integer
+          minimum: 0
+          description: |
+            Popups allowed per calendar day on the device. 0 means show none.
+          example: 3
+        reset_on_new_login:
+          type: boolean
+          description: |
+            Whether a fresh sign-in clears the device's shown-popup set and the
+            day's count, so the member sees the queue from the start. Resuming
+            a stored session is not a fresh sign-in and resets nothing.
+
+            Currently always true: marketing agreed it as a rule rather than an
+            option, so there is no setting for it. Read it from the response
+            anyway instead of assuming - that is what lets it change without an
+            app release.
+          example: true
 
     PointsHistoryResponse:
       type: object

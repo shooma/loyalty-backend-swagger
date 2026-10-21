@@ -341,6 +341,7 @@ Paths use the canonical prefix; the `/odoo/...` fallback works too (see §1).
 | GET | `/api/v1/mobile/offers/campaigns` | Visible offer campaigns for current country |
 | GET | `/api/v1/mobile/offers` | Paginated offers + banners (filters: `campaign_id`, `limit`, `offset`) |
 | GET | `/api/v1/mobile/offers/{id}` | Visible offer detail (404 if expired/cross-country) |
+| GET | `/api/v1/mobile/me/popups` | Marketing popups for this launch, plus the display policy |
 | GET | `/api/v1/mobile/stores` | Stores for current country, with format/facility/favourite filters |
 | POST/PUT/DELETE | `/api/v1/mobile/stores/{code}/favorite` | Add/remove a favourite store |
 | PUT | `/api/v1/mobile/me/push-registration` | Register/refresh this install's FCM token |
@@ -1103,6 +1104,106 @@ stub. Email and SMS are not sent for these events at all. Store-opening events a
 an explicit opening lifecycle and location targeting; shop directory updates do
 not generate them. See the core addon's `doc/notification-producers.md` for the
 event/source mapping.
+
+## Marketing popups (SO20-3285)
+
+Available after deploying `polonez_loyalty_mobile_api` 18.0.52.0.0 or later.
+
+`GET /api/v1/mobile/me/popups` returns the popups this member may be shown at
+this app launch, best first, plus the cadence to show them at. Both the branded
+app and the market come from the Bearer session.
+
+**This is a separate channel from the notification centre.** A campaign
+publication and a voucher issue already record a notification card, and push
+for the same event is handed to the delivery pipeline described above. The
+popup is a third way of surfacing the same promotion: nothing on this route
+records a card or hands anything to delivery, so a popup can never duplicate
+either.
+
+```json
+{
+  "popups": [
+    {
+      "id": 12,
+      "type": "vouchers",
+      "title": "Your free hotdog is waiting",
+      "image_url": "https://cdn.polonez.ie/loyalty/popup-image/12.webp",
+      "valid_from": "2026-10-20T00:00:00Z",
+      "valid_until": "2026-10-26T21:59:59Z",
+      "action": { "type": "vouchers" },
+      "button_label": "See mine"
+    }
+  ],
+  "display_policy": { "min_gap_minutes": 60, "max_per_day": 3, "reset_on_new_login": true }
+}
+```
+
+### Fetching
+
+Request it once per cold start and do not reuse the answer between launches. A
+popup switched off by marketing, a campaign taken down and a spent last voucher
+all disappear from the list, and a cached copy would keep offering a promotion
+that is no longer live. The list is a few hundred bytes; the images are the
+expensive part and are cached by URL instead. Nothing to promote is
+`popups: []` with a 200, never an error.
+
+### Showing, and remembering what was shown
+
+Receiving a popup is not showing it. Pick the first entry not yet shown, show
+it, and record that on the device:
+
+- key the shown set by **account**, so the next person on the phone does not
+  inherit it;
+- store whole **ids**, not a position in the list — a new popup can appear above
+  ones already shown, and a position would repeat one and skip the other;
+- `id` survives content edits, so replacing the image or the title does not
+  bring a popup back for someone who saw it;
+- clear the set and the day's count on a fresh sign-in when
+  `display_policy.reset_on_new_login` is true, which it currently always is.
+  Read the field rather than hardcoding the behaviour: that is what lets it
+  change without an app release. Resuming a stored session is not a fresh
+  sign-in;
+- do not drop an id just because the popup left the list — it can return, and
+  forgetting would show it twice.
+
+The server keeps none of this: it never learns what was shown, and the state
+does not travel between devices.
+
+### Order
+
+The list is the queue: voucher popups first, then the editor's priority, then
+oldest first. The welcome popup is the app's own and is not listed here; put it
+ahead of these.
+
+### Opening
+
+`action` is deliberately the same shape a notification card uses, so one router
+handles both:
+
+| `type` | `action` | Opens |
+| --- | --- | --- |
+| `vouchers` | `{"type": "vouchers"}` | My Vouchers, the list |
+| `campaign` | `{"type": "campaign", "id": "<id>"}` | Offers, filtered to the campaign |
+| `none` | `null` | nothing — the popup only closes |
+
+A `vouchers` popup only reaches a member who gained a usable voucher in their
+market **after that popup started** — it announces news, not a standing
+reminder. The list behind it is never empty.
+
+`button_label` is the caption for the Open button, at most 12 characters, chosen
+by marketing. It is null exactly when `action` is null — an announcement has no
+button.
+
+Route on `action`, not on `type`: `type` is there for logs, and a build meeting
+an unknown value should still render the popup.
+
+### Failures must not block the app
+
+An API error or an image that will not load closes the popup and leaves the app
+usable. A popup that never appeared is not shown, so it must not be recorded as
+shown and must not consume the daily allowance. Keep `valid_until`: it lets the
+app stop offering a finished popup without fetching the list again, for instance
+when the app has been open across the boundary.
 
 ## App documents: Terms, Privacy, About Loyalty Program (SO20-3175)
 
