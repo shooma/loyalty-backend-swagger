@@ -1083,9 +1083,9 @@ the branded app from the Bearer session. A successful sign-in creates a
 `security_new_login` card in that app; validation/refresh does not create another.
 
 Welcome, birthday, goodwill and converted vouchers create cards immediately.
-Eligible purchases (15.00–24.99 in the wallet's currency, with positive points)
-and voucher expiry reminders also appear without push consent or a registered
-device. These personal loyalty events appear in both branded feeds, with
+Every purchase by the member (`points_earned`, also when it earned no points:
+the card then invites rating the visit from the points history) and voucher
+expiry reminders also appear without push consent or a registered device. These personal loyalty events appear in both branded feeds, with
 independent read state. Claiming an existing printed voucher is not issuance.
 
 Campaign publications keep their original text and event timestamp and are
@@ -1100,7 +1100,8 @@ retention. An unavailable campaign target must be handled gracefully by the app.
 Recording a card and sending a push are separate steps: the card is written
 whatever the member's consent, devices or delivery outcome. Push itself is off
 by default and goes nowhere yet, because the shared message transport is still a
-stub. Email and SMS are not sent for these events at all. Store-opening events await
+stub. Purchase cards (`points_earned`) are feed-only: they never produce a push
+until the business decides whether a push after every receipt is wanted. Email and SMS are not sent for these events at all. Store-opening events await
 an explicit opening lifecycle and location targeting; shop directory updates do
 not generate them. See the core addon's `doc/notification-producers.md` for the
 event/source mapping.
