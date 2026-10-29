@@ -52,8 +52,9 @@ paths:
         - Vouchers funded from a member's points wallet are the member's own money, not a shop discount: they ignore minimum-purchase thresholds, do not consume the qualifying spend other vouchers are measured against, and are not limited by the maximum basket discount
         - No voucher of any kind is ever spent on alcohol or DRS: the value of all applied vouchers together never exceeds the eligible lines, so an excluded line is always paid for in full. This binds wallet vouchers too, so a wallet voucher does reduce what is left for other vouchers to discount
         - Every applied voucher must leave at least the configured minimum amount payable on the order (default 5 cents/pence, configurable from 0 to 100; 0 switches the floor off and does allow a basket to be paid entirely with vouchers). The floor is measured against the whole order, alcohol and DRS included, since the customer pays for those lines in full
-        - The order the cashier scans voucher codes in does not affect the result: the backend weighs every combination of the applicable vouchers and applies the one worth most to the customer. At most 12 vouchers are weighed per receipt; anything past that is reported as not applied
+        - The order the cashier scans voucher codes in does not affect the result: the backend weighs every combination of the applicable vouchers and applies the one worth most to the customer. At most 12 vouchers are weighed per receipt; anything past that is reported as not applied. A free-product voucher is not weighed at all: once a product it covers is on the receipt it is always applied, and the money vouchers are weighed against what is left
         - `vouchers` is cumulative: every call must carry all codes selected for this receipt so far; repeated codes are deduplicated
+        - Using a welcome, birthday or Spend & Save voucher does not cost the member the next one: their nominal is added back to the purchase amount that automatic issuance is measured against, so a basket of 25.00 paid down to 20.00 with a 5 off 25 voucher still earns the next 5 off 25. Points stay on what was actually paid. A staff discount, a goodwill voucher and a free-product voucher all still reduce that amount. The add-back needs the finalize basket reconciled with its get-member call; where that cannot be confirmed, issuance falls back to the net amount
         - Send `get-member` the **gross** basket: the backend subtracts the loyalty discounts itself, and an already-discounted basket understates the eligible spend
         - `discount_total` includes vouchers funded from the member's points wallet, which are not limited by the maximum basket discount, so it may exceed that percentage of the basket
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
@@ -501,7 +502,11 @@ components:
           example: true
         description:
           type: string
-          description: Voucher description
+          description: >-
+            Voucher description. Normally composed from the voucher's own values
+            ("Voucher 5 off 25"). A voucher issued by hand may instead carry a
+            line written by the back office, at most 20 characters, and then that
+            line is sent here verbatim.
           example: "Voucher 5 of 25"
         reason_code:
           type: string
@@ -512,6 +517,8 @@ components:
             basket holding alcohol or DRS still reports `LOW_PURCHASE_AMOUNT`),
             `DISCOUNT_CAP_REACHED` (shop discounts only; never reported for a
             wallet-funded voucher),
+            `PRODUCT_NOT_IN_BASKET` (a free-product voucher, and none of the
+            products it covers is on this receipt),
             `NOT_APPLICABLE` (catch-all: the voucher was not applied and no other
             reason fits), `NOT_STARTED`,
             `ALREADY_USED`, `VOUCHER_EXPIRED`, `VOUCHER_REVOKED`, `VOUCHER_NOT_FOUND`,
@@ -697,7 +704,12 @@ components:
             $ref: '#/components/schemas/VoucherStatusResult'
         discounts:
           type: array
-          description: List of applied discounts. Return only lines with discount > 0.
+          description: >-
+            List of applied discounts. Return only lines with discount > 0.
+            Each entry names the line the amount comes off. A free-product
+            voucher is always reported on the line holding the product it pays
+            for, never spread over the receipt, so that product ends up at the
+            voucher's own price.
           items:
             $ref: '#/components/schemas/DiscountLine'
         messages:

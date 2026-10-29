@@ -747,11 +747,48 @@ a paper receipt to the member:
 
 ### Voucher fields & statuses
 
-DTO: `code`, `type`, `status`, `description`, `discount_cents`,
-`min_purchase_cents`, `valid_from`, `valid_until`, `received_at`, `redeemed_at`,
-`receipt`, `qr_code_payload`, `printed`.
+DTO: `code`, `type`, `source`, `status`, `description`, `discount_cents`,
+`min_purchase_cents`, `product_price_cents`, `product_items`, `valid_from`,
+`valid_until`, `received_at`, `redeemed_at`, `receipt`, `qr_code_payload`,
+`printed`.
 
 Status lifecycle: `Issued` → `Active` → `Used` / `Expired` / `Revoked`.
+
+### Where a voucher came from (`source`)
+
+`type` says what a voucher does; `source` says where it came from. They are
+different questions and `source` is **not** a superset of `type`:
+
+| `source` | meaning |
+|---|---|
+| `welcome`, `birthday`, `product` | granted by that programme |
+| `pos_issuance` | earned at the till on a spend threshold |
+| `points_conversion` | minted from the member's points wallet |
+| `manual_compensation` | handed out by the back office |
+| `unknown` | issued before this field existed; do not guess |
+
+- An `x_off_y` voucher earned at the till reports `pos_issuance`, not its type.
+- A `product` voucher handed out by an operator reports `manual_compensation`,
+  not `product`.
+- **Drive layout from `type` and wording from `source`.** Keying a screen off
+  `source` breaks on exactly the two rows above.
+- `individual` used to be the only clue for both a goodwill voucher and a points
+  conversion, which is why the app labelled every one of them "Converted".
+
+### Free-product vouchers (`type: product`)
+
+A `product` voucher is not an amount of money: it gives one unit of a listed
+product at a fixed price (currently 5 cents for a hot dog).
+
+- `product_items` — the products it covers, as named for members. Show them.
+- `product_price_cents` — what one unit costs with the voucher. `0` means free.
+- `discount_cents` and `min_purchase_cents` are **`0`, not `null`**, on purpose:
+  a release that predates this type divides by them and would otherwise crash.
+  There is no money amount to show for this voucher.
+- Both fields are `null` for every other type, so the shape never varies.
+- `description` is composed from the covered products unless the back office
+  wrote its own line (at most 20 characters). It is a label, not an identifier:
+  never parse it.
 
 ### How vouchers are distributed
 
@@ -761,6 +798,7 @@ Status lifecycle: `Issued` → `Active` → `Used` / `Expired` / `Revoked`.
 | `x_off_y` | at the till on spend thresholds (rules) | anonymous and/or registered | per rule |
 | `birthday` | daily cron around the member's birthday (once/year) | member | birthday window |
 | `individual` | manually from the back office | member | per issuance |
+| `product` | on completing full registration inside a promotion's period, once per member per promotion; also by hand from the back office | member | from issuance, per promotion (14 days for the hot dog) |
 
 Seeded spend-threshold rules: **€5 off €25** (anonymous, 14d), **€5 off €25**
 (registered, 365d), **€10 off €50** (registered, 365d). A single receipt can

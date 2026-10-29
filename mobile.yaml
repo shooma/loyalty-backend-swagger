@@ -4816,18 +4816,31 @@ components:
         - receipt
         - qr_code_payload
         - printed
+        - product_price_cents
+        - product_items
+        - source
       properties:
         code:
           type: string
           example: "32917627127753"
         type:
           type: string
-          enum: [welcome, birthday, x_off_y, individual]
+          enum: [welcome, birthday, x_off_y, individual, product]
+          description: >-
+            `product` grants one unit of a listed product rather than an amount
+            of money. For it `discount_cents` and `min_purchase_cents` are 0 —
+            read `product_price_cents` and `product_items` instead.
         status:
           type: string
           enum: [Issued, Active, Used, Expired, Revoked]
         description:
           type: string
+          description: >-
+            One line describing the voucher. Usually composed from its own values,
+            or from the products a `product` voucher covers. A voucher issued by
+            hand may instead carry a line written by the back office, at most 20
+            characters, and then that line is sent here verbatim. Not a stable
+            identifier — drive layout from `type`, never from this text.
           example: "Voucher 5 off 25"
         discount_cents:
           type: integer
@@ -4872,6 +4885,40 @@ components:
         printed:
           type: boolean
           description: True for anonymous receipt vouchers; false for member-owned ones.
+        product_price_cents:
+          type: integer
+          nullable: true
+          description: >-
+            What one unit costs with a `product` voucher; 0 means free. Null for
+            every other type. Frozen when the voucher is issued, so retuning the
+            promotion afterwards does not change it.
+          example: 0
+        source:
+          type: string
+          nullable: true
+          enum: [welcome, birthday, x_off_y, product, pos_issuance, points_conversion,
+                 manual_compensation, unknown]
+          description: >-
+            Where the voucher came from. Read it to tell a points conversion
+            (`points_conversion`) from a voucher handed out by an operator
+            (`manual_compensation`): both carry `type: individual`, and `type`
+            alone cannot separate them. `unknown` means the voucher carries no
+            issuance record — do not present it as a conversion.
+
+            Not a superset of `type` and not a replacement for it: an `x_off_y`
+            voucher handed out by the till reports `pos_issuance`, not
+            `x_off_y`. `type` says what the voucher is, `source` says where it
+            came from. Drive layout from `type`.
+          example: points_conversion
+        product_items:
+          type: array
+          nullable: true
+          description: >-
+            Products a `product` voucher covers, any one of them. Null for every
+            other type. Display strings, not identifiers.
+          items:
+            type: string
+          example: ["Hot dog classic", "Hot dog kabanos"]
 
     VoucherListResponse:
       type: object
