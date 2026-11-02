@@ -499,7 +499,7 @@ paths:
         still apply. Phones outside that list retain all request limits.
 
         On preprod, the following test phones use fixed OTP `000000` and do not
-        send SMS: `+353871234561` (`country=ie`, `phone=871234561`),
+        send SMS: `+353890110001` (`country=ie`, `phone=890110001`),
         `+442800000000` (`country=ni`, `phone=2800000000`),
         `+353870000000` (`country=ie`, `phone=870000000`).
         The stage stand runs the production Twilio pipeline: any phone outside
@@ -568,7 +568,7 @@ paths:
         recognise a returning member, by design.
 
         On preprod, use code `000000` for these fixed-OTP test phones:
-        `+353871234561`, `+442800000000`, `+353870000000`. Stage keeps its own
+        `+353890110001`, `+442800000000`, `+353870000000`. Stage keeps its own
         shorter list; every other phone there receives a real SMS.
 
         A profile may hold only a limited number of active sessions (2 by

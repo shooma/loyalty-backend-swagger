@@ -53,11 +53,11 @@ POST /api/v1/mobile/auth/signup/complete  → (new phone only) → session token
 POST /api/v1/mobile/auth/otp/request
 Content-Type: application/json
 
-{ "country": "ie", "phone": "871234561", "application": "eastore" }
+{ "country": "ie", "phone": "890110001", "application": "eastore" }
 ```
 
 - `country`: `ie` (Ireland → `+353`) or `ni` (Northern Ireland → `+44`). The
-  server normalizes `country` + `phone` to E.164 (`+353871234561`).
+  server normalizes `country` + `phone` to E.164 (`+353890110001`).
 - `application`: `eastore` or `polonez`, the same build-time value you send on
   verify. **Required.** The SMS names this brand and leaves from that brand's
   registered sender, and there is no session yet to infer it from. A wrong or
@@ -81,7 +81,7 @@ Content-Type: application/json
 POST /api/v1/mobile/auth/otp/verify
 Content-Type: application/json
 
-{ "country": "ie", "phone": "871234561", "code": "000000", "application": "eastore", "device_id": "<your-device-uuid>", "platform": "android" }
+{ "country": "ie", "phone": "890110001", "code": "000000", "application": "eastore", "device_id": "<your-device-uuid>", "platform": "android" }
 ```
 
 - `application`, `device_id` and `platform` are **required**.
@@ -225,7 +225,7 @@ The configured preprod phones are:
 
 | E.164 phone | `country` | `phone` field | OTP |
 |---|---|---|---|
-| `+353871234561` | `ie` | `871234561` | `000000` |
+| `+353890110001` | `ie` | `890110001` | `000000` |
 | `+442800000000` | `ni` | `2800000000` | `000000` |
 | `+353870000000` | `ie` | `870000000` | `000000` |
 
@@ -233,8 +233,8 @@ So you can log in deterministically, for example as **John Smith** (a general
 demo member dedicated to mobile testing):
 
 ```
-request:  { "country": "ie", "phone": "871234561" }
-verify:   { "country": "ie", "phone": "871234561", "code": "000000", "application": "eastore", "device_id": "dev-1", "platform": "android" }
+request:  { "country": "ie", "phone": "890110001" }
+verify:   { "country": "ie", "phone": "890110001", "code": "000000", "application": "eastore", "device_id": "dev-1", "platform": "android" }
 → status = "authenticated"
 ```
 
@@ -273,21 +273,21 @@ Use these phones with the OTP flow. Phones are stored as E.164; pass them split 
 
 | Name | Phone (E.164) | `phone` field | Trait |
 |---|---|---|---|
-| John Smith | `+353871234561` | `871234561` | regular, Ireland (**default test phone**) |
-| Anna Kelly | `+353871234562` | `871234562` | regular, Ireland |
-| Robert Murphy | `+353871234563` | `871234563` | regular, Ireland |
-| Emily Ryan | `+353871234564` | `871234564` | regular, Ireland |
-| Michael Doyle | `+353871234565` | `871234565` | staff member |
-| Sarah Walsh | `+353871234566` | `871234566` | regular, Ireland |
-| David Brennan | `+353871234567` | `871234567` | regular, Ireland |
-| Laura Byrne | `+353871234568` | `871234568` | regular, Ireland |
-| Thomas Fitz | `+353871234569` | `871234569` | country = Poland |
-| Olivia Nolan | `+353871234570` | `871234570` | country = Poland |
-| Points Rich Member | `+353871234571` | `871234571` | 2500 points |
-| Points Small Balance | `+353871234572` | `871234572` | 399 points |
-| Unverified Email Member | `+353871234573` | `871234573` | email not verified |
-| Unverified DOB Member | `+353871234574` | `871234574` | no date of birth |
-| Deleted Pending Member | `+353871234575` | `871234575` | deletion requested — logs in restricted, restore screen |
+| John Smith | `+353890110001` | `890110001` | regular, Ireland (**default test phone**) |
+| Anna Kelly | `+353890110002` | `890110002` | regular, Ireland |
+| Robert Murphy | `+353890110003` | `890110003` | regular, Ireland |
+| Emily Ryan | `+353890110004` | `890110004` | regular, Ireland |
+| Michael Doyle | `+353890110005` | `890110005` | staff member |
+| Sarah Walsh | `+353890110006` | `890110006` | regular, Ireland |
+| David Brennan | `+353890110007` | `890110007` | regular, Ireland |
+| Laura Byrne | `+353890110008` | `890110008` | regular, Ireland |
+| Thomas Fitz | `+353890110009` | `890110009` | country = Poland |
+| Olivia Nolan | `+353890110010` | `890110010` | country = Poland |
+| Points Rich Member | `+353890110011` | `890110011` | 2500 points |
+| Points Small Balance | `+353890110012` | `890110012` | 399 points |
+| Unverified Email Member | `+353890110013` | `890110013` | email not verified |
+| Unverified DOB Member | `+353890110014` | `890110014` | no date of birth |
+| Deleted Pending Member | `+353890110015` | `890110015` | deletion requested — logs in restricted, restore screen |
 
 ### Reserved — DO NOT use (POS / cash-register integration)
 
@@ -369,12 +369,12 @@ curl -s $BASE/api/v1/mobile/config | jq
 # 2. request OTP for a test phone (no SMS, fixed code 000000)
 curl -s -X POST $BASE/api/v1/mobile/auth/otp/request \
   -H 'Content-Type: application/json' \
-  -d '{"country":"ie","phone":"871234561","application":"eastore"}' | jq
+  -d '{"country":"ie","phone":"890110001","application":"eastore"}' | jq
 
 # 3. verify → get session token (application + device_id + platform are required)
 TOKEN=$(curl -s -X POST $BASE/api/v1/mobile/auth/otp/verify \
   -H 'Content-Type: application/json' \
-  -d '{"country":"ie","phone":"871234561","code":"000000","application":"eastore","device_id":"dev-1","platform":"android"}' \
+  -d '{"country":"ie","phone":"890110001","code":"000000","application":"eastore","device_id":"dev-1","platform":"android"}' \
   | jq -r .token)
 
 # 4. authenticated call
