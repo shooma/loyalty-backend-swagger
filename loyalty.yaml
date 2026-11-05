@@ -54,7 +54,8 @@ paths:
         - Every applied voucher must leave at least the configured minimum amount payable on the order (default 5 cents/pence, configurable from 0 to 100; 0 switches the floor off and does allow a basket to be paid entirely with vouchers). The floor is measured against the whole order, alcohol and DRS included, since the customer pays for those lines in full
         - The order the cashier scans voucher codes in does not affect the result: the backend weighs every combination of the applicable vouchers and applies the one worth most to the customer. At most 12 vouchers are weighed per receipt; anything past that is reported as not applied. A free-product voucher is not weighed at all: once a product it covers is on the receipt it is always applied, and the money vouchers are weighed against what is left
         - `vouchers` is cumulative: every call must carry all codes selected for this receipt so far; repeated codes are deduplicated
-        - Using a welcome, birthday or Spend & Save voucher does not cost the member the next one: their nominal is added back to the purchase amount that automatic issuance is measured against, so a basket of 25.00 paid down to 20.00 with a 5 off 25 voucher still earns the next 5 off 25. Points stay on what was actually paid. A staff discount, a goodwill voucher and a free-product voucher all still reduce that amount. The add-back needs the finalize basket reconciled with its get-member call; where that cannot be confirmed, issuance falls back to the net amount
+        - Using a welcome, birthday or Spend & Save voucher does not cost the customer the next one. This includes anonymous receipt-issued x_off_y vouchers: their redeemed amount is added back to the eligible spend used for automatic issuance. A basket of 25.00 paid down to 20.00 with a 5 off 25 voucher still earns the next 5 off 25 under the applicable rules. Points stay on final net eligible spend. A staff discount, a goodwill voucher and a free-product voucher still reduce the issuance base. The add-back requires reconciliation with the matching get-member offer; otherwise issuance uses the net amount
+        - The next voucher follows the purchase's member identity and audience rules. Without a member it is anonymous and printed on the receipt; an identified member redeeming an anonymous voucher receives the next voucher in their own account
         - Send `get-member` the **gross** basket: the backend subtracts the loyalty discounts itself, and an already-discounted basket understates the eligible spend
         - `discount_total` includes vouchers funded from the member's points wallet, which are not limited by the maximum basket discount, so it may exceed that percentage of the basket
         - Business validation errors such as expired vouchers, missing amount thresholds, or unknown member flows should be returned in the `200` payload
@@ -798,8 +799,10 @@ components:
           type: integer
           description: |
             Basket total before loyalty discounts in cents. Final basket line
-            values must include applied discounts. Tenders minus change must
-            match the final line sum for the backend to confirm the discount.
+            values must include applied discounts. For legacy till compatibility,
+            the total minus the matching get-member discount_total is also accepted.
+            Both formats require matching basket items and quantities and tenders
+            minus change matching the final line sum to confirm the discount.
           minimum: 0
           example: 2590
         change:
