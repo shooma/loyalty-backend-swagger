@@ -4897,13 +4897,22 @@ components:
           type: string
           nullable: true
           enum: [welcome, birthday, x_off_y, product, pos_issuance, points_conversion,
-                 manual_compensation, unknown]
+                 manual_compensation, bulk_issuance, unknown]
           description: >-
             Where the voucher came from. Read it to tell a points conversion
             (`points_conversion`) from a voucher handed out by an operator
-            (`manual_compensation`): both carry `type: individual`, and `type`
-            alone cannot separate them. `unknown` means the voucher carries no
-            issuance record — do not present it as a conversion.
+            (`manual_compensation`) or from a package issued to a whole
+            group at once (`bulk_issuance`): all three carry `type: individual`, and
+            `type` alone cannot separate them. `unknown` means the voucher
+            carries no issuance record — do not present it as a conversion.
+
+            `bulk_issuance` is spendable money like a converted voucher: it is
+            not capped by the basket discount limit and carries no minimum
+            basket. It needs no client change to be shown: an `individual`
+            voucher is labelled "Voucher" for every source except
+            `points_conversion`, so a bulk-issued voucher already renders as an
+            ordinary money voucher. Treat an unrecognised value the same way,
+            as an ordinary voucher of its `type`, rather than hiding it.
 
             Not a superset of `type` and not a replacement for it: an `x_off_y`
             voucher handed out by the till reports `pos_issuance`, not

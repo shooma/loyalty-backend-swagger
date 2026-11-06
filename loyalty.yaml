@@ -356,8 +356,8 @@ components:
         and the rest of the code carries no meaning.
 
         Current format: 14 digits - a type digit (`1` welcome, `2` birthday,
-        `3` x_off_y, `4` individual, `5` points converted to a voucher), 12
-        random digits and a Luhn check digit. Vouchers issued earlier keep their
+        `3` x_off_y, `4` individual, `5` points converted to a voucher, `6` free
+        product, `7` bulk package), 12 random digits and a Luhn check digit. Vouchers issued earlier keep their
         codes until they expire: the previous `WEL`/`BDY`/`BUY`/`IND`/`PTS`
         prefix followed by 16 characters from `A-Z2-9` excluding `I` and `O`,
         and pre-2026 20-digit numeric codes.
