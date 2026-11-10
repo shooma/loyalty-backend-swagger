@@ -417,13 +417,11 @@ components:
         quantity:
           type: number
           format: float
-          description: Quantity
-          minimum: 0.001
+          description: Non-zero quantity; negative for returned lines
           example: 2
         value:
           type: integer
-          description: Current total line value in minor units
-          minimum: 0
+          description: Current total line value in minor units, negative for returns
           example: 700
         ProdDept:
           type: string
@@ -669,7 +667,6 @@ components:
         transaction_value:
           type: integer
           description: Total transaction amount in cents
-          minimum: 0
           example: 1400
         basket_items:
           type: array
@@ -812,7 +809,6 @@ components:
             the total minus the matching get-member discount_total is also accepted.
             Both formats require matching basket items and quantities and tenders
             minus change matching the final line sum to confirm the discount.
-          minimum: 0
           example: 2590
         change:
           type: integer
