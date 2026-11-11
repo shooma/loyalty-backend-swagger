@@ -794,7 +794,7 @@ product at a fixed price (currently 5 cents for a hot dog).
 
 | Type | Issued | Audience | Validity |
 |---|---|---|---|
-| `welcome` | once per member per country: on signup, or first switch to a country without a previous welcome voucher | member | from issuance, 14 days |
+| `welcome` | once per member per country: on the first login that reaches a session (signup, or a profile created in the back office), or first switch to a country without a previous welcome voucher | member | from issuance, 14 days |
 | `x_off_y` | at the till on spend thresholds (rules) | anonymous and/or registered | per rule |
 | `birthday` | daily cron around the member's birthday (once/year) | member | birthday window |
 | `individual` | manually from the back office | member | per issuance |

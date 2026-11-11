@@ -555,6 +555,13 @@ paths:
         If the phone already belongs to a loyalty profile, the response is
         `status=authenticated` with a mobile Bearer session token.
 
+        The welcome voucher (one per member per country) is granted when the
+        member reaches an authenticated session, so a profile created in the
+        back office or loaded from a file receives it on its first login here,
+        exactly like one created through `/auth/signup/complete`. Repeated
+        logins never add a second voucher, and an account with a deletion
+        request pending is granted none.
+
         `account_state` says which screen to open. `deletion_pending` means the
         account was scheduled for deletion and the window is still open: the
         token is **restricted** to `/me/delete/cancel` and `/auth/logout`, and
@@ -642,7 +649,9 @@ paths:
         Creates the partner/profile for an unknown phone after ownership was
         proven by `/auth/otp/verify`, consumes the signup token, and returns an
         authenticated mobile session. A personal welcome voucher (one per member
-        per country) is granted on completion and appears in `GET /vouchers`.
+        per country) comes with that session and appears in `GET /vouchers`;
+        members who already have a profile receive it on login instead, through
+        `/auth/otp/verify`.
 
         The operating country (`current_country`) is derived from the phone
         prefix (`+353` → `ie`, `+44` → `ni`); the welcome voucher is issued in
