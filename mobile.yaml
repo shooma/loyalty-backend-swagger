@@ -2286,7 +2286,7 @@ paths:
         - Mobile - Stores
       summary: List stores for the current country
       description: |
-        Returns the active shops of the member's current operating country, both
+        Returns active shops published in the app for the member's current operating country, both
         brands (Polonez and Eastore), ordered by name. Switch country with
         `PUT /me/country`. Coordinates power the map; `maps_url` is a fallback
         link. Opening hours are returned both as display text and structured

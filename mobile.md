@@ -890,7 +890,7 @@ them with the same API base you use for JSON calls, e.g.
 
 ## 13. Stores and opening hours
 
-`GET /stores` returns active shops for the member's `current_country`, both
+`GET /stores` returns active shops published in the app for the member's `current_country`, both
 Polonez and Eastore, ordered by name.
 
 ```bash
