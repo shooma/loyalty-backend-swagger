@@ -4328,10 +4328,10 @@ components:
           example: voucher_welcome
         title:
           type: string
-          example: Your welcome voucher is here
+          example: "You\u2019ve received your welcome voucher!"
         body:
           type: string
-          example: "\u20ac3 off your next shop over \u20ac30."
+          example: "Enjoy \u20ac3 off when you spend \u20ac10 or more. Valid until 29 Oct 2026."
         created_at:
           type: string
           format: date-time
