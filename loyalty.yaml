@@ -421,7 +421,10 @@ components:
           example: 2
         value:
           type: integer
-          description: Current total line value in minor units, negative for returns
+          description: >-
+            Current total line value in minor units, negative for returns. A sold line may also be
+            negative when the till books a promotion on it (`promoamount` or `reducedamount` above zero),
+            e.g. the last item of a multibuy.
           example: 700
         ProdDept:
           type: string
