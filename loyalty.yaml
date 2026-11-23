@@ -652,8 +652,8 @@ components:
         shop_id:
           type: string
           description: >-
-            Shop identifier: the Polonez shop code (e.g. `ATHLO`) or the CBE site name of the shop
-            (e.g. `POLONEZ MARY ST`, case-insensitive).
+            Polonez shop code (e.g. `ATHLO`), CBE site name or a configured alternative till name.
+            Names are matched in full, ignoring case and extra spaces.
           example: "ATHLO"
         timestamp:
           $ref: '#/components/schemas/PosTimestamp'
@@ -787,8 +787,8 @@ components:
         shop_id:
           type: string
           description: >-
-            Shop identifier: the Polonez shop code (e.g. `ATHLO`) or the CBE site name of the shop
-            (e.g. `POLONEZ MARY ST`, case-insensitive).
+            Polonez shop code (e.g. `ATHLO`), CBE site name or a configured alternative till name.
+            Names are matched in full, ignoring case and extra spaces.
           example: "ATHLO"
         timestamp:
           $ref: '#/components/schemas/PosTimestamp'
