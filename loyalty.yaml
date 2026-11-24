@@ -417,7 +417,10 @@ components:
         quantity:
           type: number
           format: float
-          description: Non-zero quantity; negative for returned lines
+          description: >-
+            Negative for returns. Zero with a positive value represents an unknown rounded weight
+            and counts toward monetary eligibility only. Zero with zero value has no loyalty effect.
+            An all-zero basket must total zero and finalizes once as a non-purchase.
           example: 2
         value:
           type: integer
