@@ -118,7 +118,7 @@ paths:
               example:
                 status: true
                 member_found: true
-                member_name: "Integration Tester 01"
+                member_name: " I. T."
                 points_balance: 0
                 discount_total: 500
                 scanned_vouchers:
@@ -248,7 +248,7 @@ paths:
               example:
                 status: true
                 member_found: true
-                member_name: "Integration Tester 01"
+                member_name: " I. T."
                 points_collected: 30
                 current_points: 30
                 scanned_vouchers:
@@ -700,8 +700,8 @@ components:
           example: true
         member_name:
           type: string
-          description: Loyalty program member name
-          example: "Integration Tester 01"
+          description: Receipt initials with one leading space, or an empty string if no initials are available.
+          example: " I. T."
         points_balance:
           type: integer
           description: Current bonus points balance (only verified members accrue points)
@@ -856,8 +856,8 @@ components:
           example: true
         member_name:
           type: string
-          description: Loyalty program member name
-          example: "Integration Tester 01"
+          description: Receipt initials with one leading space, or an empty string if no initials are available.
+          example: " I. T."
         points_collected:
           type: integer
           description: Number of bonus points awarded (0 for non-verified members)
